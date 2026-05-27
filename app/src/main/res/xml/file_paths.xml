@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-files-path name="patched_apks" path="patched/" />
+    <cache-path name="patched_apks_cache" path="patched/" />
+    <files-path name="keystore" path="keystore/" />
+</paths>
