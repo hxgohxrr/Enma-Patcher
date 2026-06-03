@@ -56,4 +56,22 @@
     <string name="install_warning_body">The installed version will be removed first. The system will ask for confirmation to uninstall it, then the patch will be installed automatically.</string>
     <string name="uninstall_and_install">Uninstall &amp; Install</string>
     <string name="cancel">Cancel</string>
+    <string name="drmb_bypass">DRM Bypass</string>
+    <string name="drmb_bypass_sub">For Play Store version (.drmb file)</string>
+    <string name="drmb_select">Select .drmb</string>
+    <string name="drmb_none">No .drmb file</string>
+    <string name="step_load_drmb">Loading DRM bypass</string>
+    <string name="step_load_drmb_desc">%1$d base files, %2$d split files</string>
+    <string name="source_dialog_title">App version?</string>
+    <string name="source_playstore">Play Store</string>
+    <string name="source_playstore_desc">Official APK — splits + DRM bypass</string>
+    <string name="source_external">External / Unofficial</string>
+    <string name="source_external_desc">Sideloaded APK, no splits</string>
+    <string name="step_locate_apk_splits">%1$s · %2$d splits</string>
+    <string name="warning_drm_title">⚠️ Security Warning — DRM Bypass</string>
+    <string name="warning_drm_message">The DRM Bypass file can modify MUCH MORE than just the app\'s DRM. It can inject malicious code, steal data, or damage your device.\n\nDid you download this file from a trusted source?\n\nIf you\'re not sure, CANCEL and verify the file\'s origin.</string>
+    <string name="warning_drm_hold">Hold to continue</string>
+    <string name="warning_smali_title">⚠️ Security Warning — Executable code</string>
+    <string name="warning_smali_message">This mod contains .dex/.smali files that modify the app\'s executable code. This means it could contain VIRUSES, spyware, or malicious code.\n\nReview the repository source code or make sure it comes from a trusted source.\n\nIf you\'re not sure, CANCEL immediately.</string>
+    <string name="warning_smali_hold">Hold to continue</string>
 </resources>

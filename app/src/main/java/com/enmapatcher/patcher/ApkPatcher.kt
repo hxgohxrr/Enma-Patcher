@@ -18,7 +18,9 @@ class ApkPatcher(private val workDir: File) {
         patchMap: Map<String, ByteArray>,
         appName: String? = null,
         currentLabel: String? = null,
-        mergeApk: File? = null,
+        mergeApks: List<File> = emptyList(),
+        bypassZip: File? = null,
+        bypassSplitNames: Set<String> = emptySet(),
     ): File = withContext(Dispatchers.IO) {
         workDir.mkdirs()
         val output = File(workDir, "patched_unsigned.apk")
@@ -32,10 +34,21 @@ class ApkPatcher(private val workDir: File) {
 
                 for (entry in source.entries()) {
                     val name = entry.name.replace('\\', '/')
-                    originalNames += name
                     val patchBytes = patchMap[name]
 
+                    if (patchBytes == null && name in bypassSplitNames) continue
+
+                    originalNames += name
                     when {
+
+
+
+
+                        name == "AndroidManifest.xml" && mergeApks.isNotEmpty() -> {
+                            val raw = patchBytes ?: source.getInputStream(entry).readBytes()
+                            zos.putNextEntry(ZipEntry(name))
+                            zos.write(removeSplitRequirements(raw))
+                        }
                         patchBytes != null -> {
                             zos.putNextEntry(ZipEntry(name))
                             zos.write(patchBytes)
@@ -74,10 +87,13 @@ class ApkPatcher(private val workDir: File) {
                         originalNames += path
                     }
                 }
-                if (mergeApk != null) {
-                    ZipFile(mergeApk).use { assetSrc ->
-                        for (entry in assetSrc.entries()) {
-                            val name = entry.name.replace('\\', '/')
+
+                if (bypassZip != null) {
+                    ZipFile(bypassZip).use { bzip ->
+                        for (entry in bzip.entries()) {
+                            val raw = entry.name.replace('\\', '/')
+                            if (!raw.startsWith("split/") || entry.isDirectory) continue
+                            val name = raw.removePrefix("split/")
                             if (name == "AndroidManifest.xml") continue
                             if (name.startsWith("META-INF/")) continue
                             if (name in originalNames) continue
@@ -86,8 +102,34 @@ class ApkPatcher(private val workDir: File) {
                                 zos.putNextEntry(ZipEntry(name))
                                 zos.write(patchBytes)
                             } else {
+
+                                zos.putNextEntry(storedAligned(name, entry.size, entry.crc, counting))
+                                bzip.getInputStream(entry).use { it.copyTo(zos, bufferSize = BUFFER) }
+                            }
+                            zos.closeEntry()
+                            originalNames += name
+                        }
+                    }
+                }
+
+                for (splitApk in mergeApks) {
+                    ZipFile(splitApk).use { splitSrc ->
+                        for (entry in splitSrc.entries()) {
+                            val name = entry.name.replace('\\', '/')
+                            if (name == "AndroidManifest.xml") continue
+                            if (name.startsWith("META-INF/")) continue
+                            if (name in originalNames) continue
+                            val patchBytes = patchMap[name]
+                            if (patchBytes != null) {
                                 zos.putNextEntry(ZipEntry(name))
-                                assetSrc.getInputStream(entry).use { it.copyTo(zos, bufferSize = BUFFER) }
+                                zos.write(patchBytes)
+                            } else if (entry.method == ZipEntry.STORED) {
+
+                                zos.putNextEntry(storedAligned(name, entry.size, entry.crc, counting))
+                                splitSrc.getInputStream(entry).use { it.copyTo(zos, bufferSize = BUFFER) }
+                            } else {
+                                zos.putNextEntry(ZipEntry(name))
+                                splitSrc.getInputStream(entry).use { it.copyTo(zos, bufferSize = BUFFER) }
                             }
                             zos.closeEntry()
                             originalNames += name
@@ -101,6 +143,14 @@ class ApkPatcher(private val workDir: File) {
     }
 
 
+
+
+
+
+
+
+
+
     suspend fun zipAlign(apk: File): Unit = withContext(Dispatchers.IO) {
         val tmp = File(apk.parent, "${apk.name}.align_tmp")
         try {
@@ -110,6 +160,10 @@ class ApkPatcher(private val workDir: File) {
                 ZipFile(apk).use { source ->
                     for (entry in source.entries()) {
                         val name = entry.name
+
+
+
+
                         when {
                             name == "resources.arsc" || entry.method == ZipEntry.STORED -> {
                                 val bytes = source.getInputStream(entry).use { it.readBytes() }
@@ -142,8 +196,14 @@ class ApkPatcher(private val workDir: File) {
         crc: Long,
         counting: CountingOutputStream,
     ): ZipEntry {
+
+
         val nameLen = name.toByteArray(Charsets.UTF_8).size
         val basePos = (counting.count + 30L + nameLen) % 4
+
+
+
+
         val extraLen = if (basePos == 0L) 0 else (8 - basePos).toInt()
         return ZipEntry(name).apply {
             method = ZipEntry.STORED
@@ -153,10 +213,62 @@ class ApkPatcher(private val workDir: File) {
             if (extraLen > 0) {
                 val dataLen = extraLen - 4
                 extra = ByteArray(extraLen).apply {
+
                     this[0] = 0; this[1] = 0
+
                     this[2] = (dataLen and 0xFF).toByte()
                     this[3] = (dataLen ushr 8 and 0xFF).toByte()
+
                 }
+            }
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+    private fun removeSplitRequirements(manifest: ByteArray): ByteArray {
+        val result = manifest.copyOf()
+        val targets = listOf(
+            "base__abi,base__density",
+            "base__abi,base__density,base__language",
+            "base__density,base__abi",
+            "base__abi",
+            "base__density",
+            "base__language",
+            "com.android.vending.splits.required",
+        )
+        for (target in targets) {
+
+            nullStringEntry(result, target.toByteArray(Charsets.UTF_16LE), prefixBytes = 2)
+
+            nullStringEntry(result, target.toByteArray(Charsets.UTF_8), prefixBytes = 2)
+        }
+        return result
+    }
+
+
+    private fun nullStringEntry(buf: ByteArray, needle: ByteArray, prefixBytes: Int) {
+        var i = prefixBytes
+        while (i <= buf.size - needle.size) {
+            var match = true
+            for (j in needle.indices) {
+                if (buf[i + j] != needle[j]) { match = false; break }
+            }
+            if (match) {
+                for (k in 1..prefixBytes) buf[i - k] = 0
+                for (j in needle.indices) buf[i + j] = 0
+                i += needle.size
+            } else {
+                i++
             }
         }
     }
@@ -168,6 +280,6 @@ class ApkPatcher(private val workDir: File) {
     }
 
     companion object {
-        private const val BUFFER = 65536
+        private const val BUFFER = 1_048_576
     }
 }

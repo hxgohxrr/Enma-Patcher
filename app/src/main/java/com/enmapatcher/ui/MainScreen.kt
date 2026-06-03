@@ -36,6 +36,47 @@ fun MainScreen(
     val backupFile by viewModel.backupFile.collectAsState()
     val context = LocalContext.current
 
+    val hasDex by viewModel.hasDexPatches.collectAsState()
+
+
+    var showSmaliWarning by remember { mutableStateOf(false) }
+    var showDrmWarning by remember { mutableStateOf(false) }
+    var pendingPatch by remember { mutableStateOf(false) }
+
+
+    if (pendingPatch && !showSmaliWarning && !showDrmWarning) {
+        LaunchedEffect(Unit) {
+            pendingPatch = false
+            onNavigateToPatch()
+        }
+    }
+
+    if (showSmaliWarning) {
+        SecurityWarningDialog(
+            title = stringResource(R.string.warning_smali_title),
+            message = stringResource(R.string.warning_smali_message),
+            holdButtonText = stringResource(R.string.warning_smali_hold),
+            onConfirm = {
+                showSmaliWarning = false
+
+                val warnings = viewModel.getSecurityWarnings()
+                if (warnings.showDrmWarning) showDrmWarning = true
+
+            },
+            onDismiss = { showSmaliWarning = false; pendingPatch = false },
+        )
+    }
+
+    if (showDrmWarning) {
+        SecurityWarningDialog(
+            title = stringResource(R.string.warning_drm_title),
+            message = stringResource(R.string.warning_drm_message),
+            holdButtonText = stringResource(R.string.warning_drm_hold),
+            onConfirm = { showDrmWarning = false },
+            onDismiss = { showDrmWarning = false; pendingPatch = false },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -64,7 +105,15 @@ fun MainScreen(
             )
 
             Button(
-                onClick = onNavigateToPatch,
+                onClick = {
+                    val warnings = viewModel.getSecurityWarnings()
+                    pendingPatch = true
+                    when {
+                        warnings.showSmaliWarning -> showSmaliWarning = true
+                        warnings.showDrmWarning -> showDrmWarning = true
+                        else -> {  }
+                    }
+                },
                 enabled = appInstalled,
                 modifier = Modifier
                     .fillMaxWidth()

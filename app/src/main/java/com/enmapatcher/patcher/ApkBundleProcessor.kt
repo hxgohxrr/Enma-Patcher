@@ -9,7 +9,7 @@ import java.util.zip.ZipInputStream
 
 class ApkBundleProcessor(private val context: Context) {
 
-    
+
     suspend fun extractBundle(uri: Uri, workDir: File): Map<String, File> = withContext(Dispatchers.IO) {
         workDir.mkdirs()
         val result = mutableMapOf<String, File>()
@@ -51,7 +51,7 @@ class ApkBundleProcessor(private val context: Context) {
         return mapOf("base" to outFile)
     }
 
-    
+
     fun findAssetPack(apks: Map<String, File>): File? =
         apks.entries.firstOrNull { (name, _) ->
             name.contains("install_time", ignoreCase = true) ||
@@ -59,34 +59,42 @@ class ApkBundleProcessor(private val context: Context) {
                     name.contains("assets", ignoreCase = true)
         }?.value
 
-    
-    /**
-     * Returns (baseApk, assetPackSplit?).
-     * baseApk  = appInfo.sourceDir — always the code/resources APK.
-     * assetPackSplit = install-time asset pack split if present (purchased version),
-     *                  null for single-APK installs (sideloaded / "pirata").
-     */
-    fun findInstalledApks(packageName: String): Pair<File, File?> {
+
+
+
+
+
+
+
+
+
+
+    fun findInstalledApks(packageName: String): Pair<File, List<File>> {
         val appInfo = context.packageManager.getApplicationInfo(packageName, 0)
         val base = File(appInfo.sourceDir)
-        val assetPack = appInfo.splitSourceDirs
+        val splits = appInfo.splitSourceDirs
             ?.map { File(it) }
-            ?.firstOrNull { f ->
+            ?.sortedWith(compareBy { f ->
+
                 val n = f.nameWithoutExtension.lowercase()
-                "install_time" in n || "assetpack" in n ||
-                        ("asset" in n && "pack" in n)
-            }
-        return base to assetPack
+                when {
+                    "install_time" in n || "assetpack" in n ||
+                            ("asset" in n && "pack" in n) -> 1
+                    else -> 0
+                }
+            })
+            ?: emptyList()
+        return base to splits
     }
 
-    /** Legacy single-file accessor kept for callers that only need base.apk. */
+
     fun findAssetPackFromInstalled(packageName: String): File? = try {
         findInstalledApks(packageName).first
     } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
         null
     }
 
-    
+
     fun isInstalled(packageName: String): Boolean = try {
         context.packageManager.getApplicationInfo(packageName, 0)
         true

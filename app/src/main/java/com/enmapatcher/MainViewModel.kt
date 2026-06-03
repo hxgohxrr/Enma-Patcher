@@ -4,6 +4,9 @@ import android.app.Application
 import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.enmapatcher.model.AppSettings
@@ -18,8 +21,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.File
+
+private val Context.dataStore by preferencesDataStore(name = "app_settings")
+private val SETTINGS_KEY = stringPreferencesKey("settings")
+
+data class SecurityWarnings(
+    val showDrmWarning: Boolean = false,
+    val showSmaliWarning: Boolean = false,
+)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -40,10 +54,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _backupFile = MutableStateFlow<File?>(null)
     val backupFile: StateFlow<File?> = _backupFile.asStateFlow()
 
+    private val _hasDexPatches = MutableStateFlow(false)
+    val hasDexPatches: StateFlow<Boolean> = _hasDexPatches.asStateFlow()
+
     init {
-        checkInstalled()
-        fetchRemoteConfig()
-        checkExistingBackup()
+        viewModelScope.launch {
+
+            val prefs = context.dataStore.data.first()
+            prefs[SETTINGS_KEY]?.let { json ->
+                runCatching { Json.decodeFromString<AppSettings>(json) }.getOrNull()
+                    ?.let { saved ->
+                        _settings.value = saved
+                        applyLocale(saved.language)
+                    }
+            }
+            checkInstalled()
+            fetchRemoteConfig()
+            checkExistingBackup()
+        }
     }
 
     private fun checkExistingBackup() {
@@ -61,6 +89,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _config.value = remote
             } catch (_: Exception) {}
         }
+        viewModelScope.launch {
+            _hasDexPatches.value = checkDexInRepo()
+        }
     }
 
     private fun checkInstalled() {
@@ -71,10 +102,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _settings.value = newSettings
         checkInstalled()
         fetchRemoteConfig()
-        val locale = if (newSettings.language.isBlank())
+        applyLocale(newSettings.language)
+        viewModelScope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[SETTINGS_KEY] = Json.encodeToString(newSettings)
+            }
+        }
+    }
+
+    fun getSecurityWarnings(): SecurityWarnings {
+        val s = _settings.value
+        return SecurityWarnings(
+            showDrmWarning = s.drmbUri.isNotBlank(),
+            showSmaliWarning = _hasDexPatches.value,
+        )
+    }
+
+    private suspend fun checkDexInRepo(): Boolean = try {
+        val s = _settings.value
+        val url = "https://api.github.com/repos/${s.githubOwner}/${s.githubRepoName}" +
+                "/git/trees/${s.githubBranch}?recursive=1"
+        val response = GithubPatchSource.client.newCall(
+            okhttp3.Request.Builder().url(url)
+                .header("Accept", "application/vnd.github+json")
+                .build()
+        ).execute()
+        if (response.isSuccessful) {
+            val body = response.body?.string().orEmpty()
+            body.contains(".dex") || body.contains(".smali")
+        } else false
+    } catch (_: Exception) { false }
+
+    private fun applyLocale(language: String) {
+        val locale = if (language.isBlank())
             LocaleListCompat.getEmptyLocaleList()
         else
-            LocaleListCompat.forLanguageTags(newSettings.language)
+            LocaleListCompat.forLanguageTags(language)
         AppCompatDelegate.setApplicationLocales(locale)
     }
 
@@ -110,6 +173,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 _patchState.value = PatchState.Error(msg, e)
+            }
+        }
+    }
+
+
+    fun updateDrmbUri(path: String) {
+        val newSettings = _settings.value.copy(drmbUri = path)
+        _settings.value = newSettings
+        viewModelScope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[SETTINGS_KEY] = Json.encodeToString(newSettings)
             }
         }
     }

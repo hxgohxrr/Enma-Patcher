@@ -12,6 +12,7 @@ data class AppSettings(
     val language: String = "",
     val backupEnabled: Boolean = false,
     val backupFolderUri: String = "",
+    val drmbUri: String = "",
 ) {
     val githubOwner: String get() = githubRepo.substringBefore("/")
     val githubRepoName: String get() = githubRepo.substringAfter("/")

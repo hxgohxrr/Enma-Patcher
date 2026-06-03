@@ -56,4 +56,25 @@
     <string name="install_warning_body">La versión instalada se eliminará primero. El sistema pedirá confirmación para desinstalarla y luego se instalará el parche automáticamente.</string>
     <string name="uninstall_and_install">Desinstalar e instalar</string>
     <string name="cancel">Cancelar</string>
+    <string name="uninstall_first_title">Desinstala la app primero</string>
+    <string name="uninstall_first_body">Hay una versión instalada con firma diferente. Desinstálala manualmente desde sus ajustes y vuelve aquí para instalar el parche.</string>
+    <string name="open_app_settings">Abrir ajustes de app</string>
+    <string name="drmb_bypass">DRM Bypass</string>
+    <string name="drmb_bypass_sub">Para versión de Play Store (archivo .drmb)</string>
+    <string name="drmb_select">Seleccionar .drmb</string>
+    <string name="drmb_none">Sin archivo .drmb</string>
+    <string name="step_load_drmb">Cargando DRM bypass</string>
+    <string name="step_load_drmb_desc">%1$d archivos base, %2$d archivos split</string>
+    <string name="source_dialog_title">¿Versión de la app?</string>
+    <string name="source_playstore">Play Store</string>
+    <string name="source_playstore_desc">APK oficial — splits + DRM bypass</string>
+    <string name="source_external">Externa / Pirata</string>
+    <string name="source_external_desc">APK descargado externamente, sin splits</string>
+    <string name="step_locate_apk_splits">%1$s · %2$d splits</string>
+    <string name="warning_drm_title">⚠️ Aviso de seguridad — DRM Bypass</string>
+    <string name="warning_drm_message">El archivo DRM Bypass puede modificar MUCHO MÁS que solo el DRM de la aplicación. Puede inyectar código malicioso, robar datos o dañar tu dispositivo.\n\n¿Has descargado este archivo de una fuente confiable?\n\nSi no estás seguro, CANCELA y verifica el origen del archivo.</string>
+    <string name="warning_drm_hold">Mantener pulsado para continuar</string>
+    <string name="warning_smali_title">⚠️ Aviso de seguridad — Código ejecutable</string>
+    <string name="warning_smali_message">Este mod contiene archivos .dex/.smali que modifican el código ejecutable de la app. Esto significa que puede contener VIRUS, spyware o código malicioso.\n\nRevisa el código fuente del repositorio o asegúrate de que proviene de una fuente confiable.\n\nSi no estás seguro, CANCELA inmediatamente.</string>
+    <string name="warning_smali_hold">Mantener pulsado para continuar</string>
 </resources>

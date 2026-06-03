@@ -64,6 +64,8 @@ android {
                 "META-INF/*.kotlin_module",
                 "google/protobuf/*.proto",
                 "META-INF/maven/**",
+                "smali.properties",
+                "baksmali.properties",
             )
         }
     }
@@ -85,16 +87,37 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+
+
+
     implementation("com.android.tools.build:apksig:8.3.2")
+
+
     implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
     implementation("org.bouncycastle:bcprov-jdk15on:1.70")
+
+
+
     implementation("app.revanced:revanced-patcher:21.0.0")
+
+
+    implementation("org.smali:dexlib2:2.5.2") { exclude(group = "com.google.guava") }
+    implementation("org.smali:smali:2.5.2")   { exclude(group = "com.google.guava") }
+    implementation("com.google.guava:guava:32.1.3-android")
+
+
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
+
     debugImplementation("androidx.compose.ui:ui-tooling")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("io.mockk:mockk:1.13.11")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
