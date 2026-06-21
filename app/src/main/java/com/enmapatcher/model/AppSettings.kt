@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class AppSettings(
     val targetPackage: String = "jp.co.level5.yws1",
-    val githubRepo: String = "hxgohxrr/YW1MESP",
+    val githubRepo: String = "ChipLG08/YW1MESP",
     val githubBranch: String = "main",
     val autoInstall: Boolean = false,
     val keepPatchedApk: Boolean = true,
