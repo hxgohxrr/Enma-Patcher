@@ -89,6 +89,13 @@ KEY_ALIAS=your_alias
 
 Output is in `app/build/outputs/apk/`.
 
+## Translations
+Spanish - hxgohxrr 
+
+English - hxgohxrr
+
+German - kxmal_47
+
 ## Architecture
 
 | Component | Description |
