@@ -26,8 +26,7 @@
     <string name="join_discord">Join Discord</string>
     <string name="language">Language</string>
     <string name="language_system">System</string>
-    <string name="language_es">Español</string>
-    <string name="language_en">English</string>
+    <string name="language_local">English</string>
     <string name="app_not_found_package">App not found: %1$s</string>
     <string name="step_download_config">Downloading config</string>
     <string name="step_download_config_desc">enmapatcher.cfg.json from GitHub</string>

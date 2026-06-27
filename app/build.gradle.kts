@@ -23,6 +23,15 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+
+        val resLocales = file("src/main/res").listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("values-") }
+            ?.map { it.name.substringAfter("values-") }
+            ?.filter { it.length == 2 || (it.length == 6 && it.contains("-r")) }
+            ?: emptyList()
+        val allLocales = (listOf("es") + resLocales).distinct()
+        resourceConfigurations += allLocales
+        buildConfigField("String[]", "SUPPORTED_LOCALES", "new String[]{${allLocales.joinToString(",") { "\"$it\"" }}}")
     }
 
     signingConfigs {
@@ -49,7 +58,10 @@ android {
 
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures { 
+        compose = true 
+        buildConfig = true
+    }
 
     packaging {
         jniLibs {

@@ -27,10 +27,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.enmapatcher.MainViewModel
 import com.enmapatcher.R
 import com.enmapatcher.model.AppSettings
+import com.enmapatcher.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,11 +157,24 @@ fun SettingsScreen(
         }
     }
 
-    val languageOptions = listOf(
-        "" to R.string.language_system,
-        "es" to R.string.language_es,
-        "en" to R.string.language_en,
-    )
+    val systemString = stringResource(R.string.language_system)
+    val languageOptions = remember(systemString) {
+        val options = mutableListOf("" to systemString)
+        BuildConfig.SUPPORTED_LOCALES.forEach { code ->
+            val locale = if (code.contains("-r")) {
+                val parts = code.split("-r")
+                Locale(parts[0], parts[1])
+            } else {
+                Locale(code)
+            }
+            val conf = android.content.res.Configuration(context.resources.configuration)
+            conf.setLocale(locale)
+            val localizedContext = context.createConfigurationContext(conf)
+            val displayName = localizedContext.getString(R.string.language_local)
+            options.add(code to displayName)
+        }
+        options
+    }
 
     Scaffold(
         topBar = {
@@ -338,13 +353,13 @@ fun SettingsScreen(
             Text(stringResource(R.string.language), style = MaterialTheme.typography.titleMedium)
 
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                languageOptions.forEachIndexed { index, (code, labelRes) ->
+                languageOptions.forEachIndexed { index, (code, label) ->
                     SegmentedButton(
                         selected = language == code,
                         onClick = { language = code },
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = languageOptions.size),
                     ) {
-                        Text(stringResource(labelRes))
+                        Text(label)
                     }
                 }
             }

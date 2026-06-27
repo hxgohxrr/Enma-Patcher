@@ -25,8 +25,7 @@
     <string name="install_warning_title">App ersetzen</string>
     <string name="join_discord">Discord beitreten</string>
     <string name="language">Sprache</string>
-    <string name="language_en">English</string>
-    <string name="language_es">Español</string>
+    <string name="language_local">Deutsch</string>
     <string name="language_system">System</string>
     <string name="loading">Wird geladen…</string>
     <string name="patch">Patchen</string>
