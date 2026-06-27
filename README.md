@@ -96,6 +96,8 @@ English - hxgohxrr
 
 German - kxmal_47
 
+French - Yo-New 3DS
+
 ## Architecture
 
 | Component | Description |
