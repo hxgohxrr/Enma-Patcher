@@ -78,6 +78,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .proxy(java.net.Proxy.NO_PROXY)
             .build()
     }
 }
