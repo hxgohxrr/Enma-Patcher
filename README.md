@@ -94,7 +94,9 @@ Spanish - hxgohxrr
 
 English - hxgohxrr
 
-German - kxmal_47
+German - Raizuma
+
+French - Yo-New 3DS
 
 ## Architecture
 
