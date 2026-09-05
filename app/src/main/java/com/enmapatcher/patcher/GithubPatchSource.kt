@@ -2,6 +2,7 @@ package com.enmapatcher.patcher
 
 import com.enmapatcher.model.AppSettings
 import com.enmapatcher.model.EnmaCfg
+import com.enmapatcher.model.ModPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -25,15 +26,10 @@ class GithubPatchSource(private val settings: AppSettings) {
         get() = settings.githubBranch
 
     private fun ensureSourceAllowed() {
-        val ownerNormalized = owner.trim().lowercase()
-        val repoNormalized = repo.trim().lowercase()
+        val target = (owner.trim() + "/" + repo.trim()).lowercase()
+        val blocked = ModPolicy.DEFAULT_BANNED_WORDS.any { it.lowercase() in target }
 
-        val blockedOwner = ownerNormalized == "raizuma"
-        val blockedRepository =
-            ownerNormalized.contains("raizuma") ||
-            repoNormalized.contains("raizuma")
-
-        check(!blockedOwner && !blockedRepository) {
+        check(!blocked) {
             "This source is not supported."
         }
     }
@@ -173,15 +169,10 @@ class GithubPatchSource(private val settings: AppSettings) {
                 .build()
 
         private fun ensureRepoAllowed(owner: String, repo: String) {
-            val ownerNormalized = owner.trim().lowercase()
-            val repoNormalized = repo.trim().lowercase()
+            val target = (owner.trim() + "/" + repo.trim()).lowercase()
+            val blocked = ModPolicy.DEFAULT_BANNED_WORDS.any { it.lowercase() in target }
 
-            val blockedOwner = ownerNormalized == "raizuma"
-            val blockedRepository =
-                ownerNormalized.contains("raizuma") ||
-                repoNormalized.contains("raizuma")
-
-            check(!blockedOwner && !blockedRepository) {
+            check(!blocked) {
                 "This source is not supported."
             }
         }
