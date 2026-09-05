@@ -27,7 +27,7 @@ class ModPolicyChecker(private val policyUrl: String) {
     fun checkContents(policy: ModPolicy, files: Map<String, ByteArray>) {
         if (policy.bannedWords.isEmpty()) return
         for ((path, bytes) in files) {
-            if (bytes.size > 1_048_576) continue
+            if (bytes.size > 262_144 || bytes.contains(0)) continue
             val text = runCatching { bytes.toString(Charsets.UTF_8) }.getOrNull() ?: continue
             if (!text.any { it.isLetterOrDigit() }) continue
             val blocked = policy.findBlockedWord(text)

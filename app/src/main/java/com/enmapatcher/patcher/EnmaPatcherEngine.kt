@@ -16,6 +16,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.util.zip.ZipInputStream
 
 class EnmaPatcherEngine(private val context: Context) {
@@ -83,17 +84,32 @@ class EnmaPatcherEngine(private val context: Context) {
             Triple(baseApk, splits, label)
         }
         var mergedConfig = EnmaCfg()
-        val perModPatches = ArrayList<Pair<ModEntry, Map<String, ByteArray>>>(mods.size)
+        val perModPatches = ArrayList<Triple<ModEntry, EnmaCfg, Map<String, ByteArray>>>(mods.size)
         val perModCounts = LinkedHashMap<String, Int>()
         for ((index, mod) in mods.withIndex()) {
             val modLabel = modLabel(mod)
             val title = context.getString(R.string.step_download_mod, index + 1, mods.size, modLabel)
             onStep(PatchStep(title, context.getString(R.string.step_download_mod_running), PatchStepStatus.RUNNING))
             try {
-                val (cfg, files) = withContext(Dispatchers.IO) { downloadMod(mod) }
+                val (cfg, files) = withContext(Dispatchers.IO) {
+                    downloadMod(mod) { done, _, _ ->
+                        onStep(
+                            PatchStep(
+                                title,
+                                context.getString(R.string.step_download_mod_done, done),
+                                PatchStepStatus.RUNNING,
+                            )
+                        )
+                    }
+                }
+                if (files.isEmpty() && cfg.appName.isNullOrBlank() &&
+                    cfg.currentLabel.isNullOrBlank() && cfg.version.isNullOrBlank()
+                ) {
+                    throw IOException("EmptyMod:${modLabel(mod)}")
+                }
                 policyChecker.checkPaths(policy, files.keys)
                 policyChecker.checkContents(policy, files)
-                perModPatches += mod to files
+                perModPatches += Triple(mod, cfg, files)
                 perModCounts[mod.id] = files.size
                 if (mergedConfig.appName.isNullOrBlank() && !cfg.appName.isNullOrBlank()) {
                     mergedConfig = mergedConfig.copy(appName = cfg.appName)
@@ -124,9 +140,9 @@ class EnmaPatcherEngine(private val context: Context) {
             currentLabel = label
         }
         var patchMap = LinkedHashMap<String, ByteArray>()
-        for ((_, files) in perModPatches.asReversed()) {
+        for ((_, cfg, files) in perModPatches.asReversed()) {
             for ((path, bytes) in files) {
-                patchMap[path] = bytes
+                if (cfg.allows(path)) patchMap[path] = bytes
             }
         }
         var bypassFile: File? = null
@@ -273,14 +289,27 @@ class EnmaPatcherEngine(private val context: Context) {
         }
     }
 
-    private fun downloadMod(mod: ModEntry): Pair<EnmaCfg, Map<String, ByteArray>> {
+    private suspend fun downloadMod(
+        mod: ModEntry,
+        onProgress: ((done: Int, total: Int, path: String) -> Unit)?,
+    ): Pair<EnmaCfg, Map<String, ByteArray>> {
         return if (mod.kind == ModKind.GITHUB) {
-            GithubPatchSource.fetchPatchesByRaw(mod.owner, mod.repoName, mod.branch.ifBlank { "main" }, null)
+            GithubPatchSource.fetchPatchesByRaw(
+                mod.owner,
+                mod.repoName,
+                mod.branch.ifBlank { "main" },
+                onProgress,
+            )
         } else {
             val uri = Uri.parse(mod.zipUri)
             val stream = context.contentResolver.openInputStream(uri)
                 ?: throw IllegalArgumentException(context.getString(R.string.error_open_zip, modLabel(mod)))
-            stream.use { GithubPatchSource.loadLocalZip(it) }
+            val result = stream.use { GithubPatchSource.loadLocalZip(it) }
+            try {
+                onProgress?.invoke(result.second.size, result.second.size, modLabel(mod))
+            } catch (_: Exception) {
+            }
+            result
         }
     }
 

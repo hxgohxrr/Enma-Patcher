@@ -4,6 +4,11 @@ import com.enmapatcher.model.AppSettings
 import com.enmapatcher.model.EnmaCfg
 import com.enmapatcher.model.ModPolicy
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -158,7 +163,8 @@ class GithubPatchSource(private val settings: AppSettings) {
 
     companion object {
         private const val BUFFER = 65536
-        private const val MAX_RAW_FILE_BYTES = 200L * 1024L * 1024L
+        private const val MAX_RAW_FILE_BYTES = 512L * 1024L * 1024L
+        private const val MAX_ZIP_ENTRY_BYTES = 1L * 1024L * 1024L * 1024L
 
         val client: OkHttpClient =
             OkHttpClient.Builder()
@@ -245,12 +251,12 @@ class GithubPatchSource(private val settings: AppSettings) {
                 }
         }
 
-        fun fetchPatchesByRaw(
+        suspend fun fetchPatchesByRaw(
             owner: String,
             repo: String,
             branch: String,
             onProgress: ((done: Int, total: Int, path: String) -> Unit)?
-        ): Pair<EnmaCfg, Map<String, ByteArray>> {
+        ): Pair<EnmaCfg, Map<String, ByteArray>> = coroutineScope {
             ensureRepoAllowed(owner, repo)
             var config = EnmaCfg()
             try {
@@ -258,22 +264,56 @@ class GithubPatchSource(private val settings: AppSettings) {
             } catch (_: Exception) {
             }
             val files = listRepoFiles(owner, repo, branch)
-            val targets = files.filter { it != "enmapatcher.cfg.json" }
-            val patches = LinkedHashMap<String, ByteArray>(targets.size)
-            var done = 0
-            for (path in targets) {
-                try {
-                    patches[path] = downloadRawBytes(owner, repo, branch, path)
-                } catch (_: Exception) {
-                }
-                done++
-                try {
-                    onProgress?.invoke(done, targets.size, path)
-                } catch (_: Exception) {
+            val targets = files.filter { it != "enmapatcher.cfg.json" && config.allows(it) }
+            val patches = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+            val errors = java.util.concurrent.ConcurrentLinkedQueue<String>()
+            val done = java.util.concurrent.atomic.AtomicInteger(0)
+            val semaphore = Semaphore(4)
+            val jobs = targets.map { path ->
+                async {
+                    semaphore.withPermit {
+                        var attempt = 0
+                        while (true) {
+                            try {
+                                patches[path] = downloadRawBytes(owner, repo, branch, path)
+                                break
+                            } catch (e: IOException) {
+                                if (e.message?.startsWith("RawTooLarge") == true) throw e
+                                attempt++
+                                if (attempt > 1) {
+                                    errors += path
+                                    break
+                                }
+                            }
+                        }
+                        val current = done.incrementAndGet()
+                        try {
+                            onProgress?.invoke(current, targets.size, path)
+                        } catch (_: Exception) {
+                        }
+                    }
                 }
             }
+            jobs.awaitAll()
             if (patches.isEmpty() && targets.isNotEmpty()) throw IOException("RawDownloadEmpty")
-            return config to patches
+            if (errors.isNotEmpty()) {
+                throw IOException("RawDownloadFailed:" + errors.take(5).joinToString(","))
+            }
+            config to patches
+        }
+
+        fun readBounded(stream: java.io.InputStream, max: Long, label: String): ByteArray {
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(65536)
+            var total = 0L
+            while (true) {
+                val n = stream.read(buf)
+                if (n < 0) break
+                total += n
+                if (total > max) throw IOException("EntryTooLarge:$label")
+                out.write(buf, 0, n)
+            }
+            return out.toByteArray()
         }
 
         fun fetchPatchesByZip(
@@ -320,56 +360,64 @@ class GithubPatchSource(private val settings: AppSettings) {
         }
 
         fun loadLocalZip(inputStream: InputStream): Pair<EnmaCfg, Map<String, ByteArray>> {
-            var config = EnmaCfg()
-            val patches = mutableMapOf<String, ByteArray>()
+            val rawEntries = ArrayList<Pair<String, ByteArray>>()
             ZipInputStream(inputStream.buffered(BUFFER)).use { zis ->
                 var entry = zis.nextEntry
-                var stripPrefix: String? = null
                 while (entry != null) {
-                    val name = entry.name
-                    if (stripPrefix == null && name.endsWith("/") && name.count { it == '/' } == 1) {
-                        stripPrefix = name
-                        entry = zis.nextEntry
-                        continue
-                    }
                     if (!entry.isDirectory) {
-                        val relative = if (stripPrefix != null && name.startsWith(stripPrefix))
-                            name.removePrefix(stripPrefix) else name
-                        if (relative == "enmapatcher.cfg.json") {
-                            config = EnmaCfg.fromJson(zis.readBytes().toString(Charsets.UTF_8))
-                        } else {
-                            patches[relative] = zis.readBytes()
-                        }
+                        rawEntries += entry.name to readBounded(zis, MAX_ZIP_ENTRY_BYTES, entry.name)
                     }
                     zis.closeEntry()
                     entry = zis.nextEntry
                 }
+            }
+            val stripPrefix = commonTopPrefix(rawEntries.map { it.first })
+            var config = EnmaCfg()
+            for ((name, bytes) in rawEntries) {
+                val relative = if (stripPrefix != null) name.removePrefix(stripPrefix) else name
+                if (relative == "enmapatcher.cfg.json") {
+                    config = runCatching { EnmaCfg.fromJson(bytes.toString(Charsets.UTF_8)) }
+                        .getOrDefault(EnmaCfg())
+                    break
+                }
+            }
+            val patches = LinkedHashMap<String, ByteArray>(rawEntries.size)
+            for ((name, bytes) in rawEntries) {
+                val relative = if (stripPrefix != null) name.removePrefix(stripPrefix) else name
+                if (relative == "enmapatcher.cfg.json" || relative.isBlank()) continue
+                if (!config.allows(relative)) continue
+                patches[relative] = bytes
+            }
+            if (patches.isEmpty() && config.appName.isNullOrBlank() && config.version.isNullOrBlank()) {
+                throw IOException("EmptyModZip")
             }
             return config to patches
         }
 
         fun listLocalZipEntries(inputStream: InputStream, limit: Int = 500): List<String> {
-            val out = ArrayList<String>()
+            val names = ArrayList<String>()
             ZipInputStream(inputStream.buffered(BUFFER)).use { zis ->
                 var entry = zis.nextEntry
-                var stripPrefix: String? = null
-                while (entry != null && out.size < limit) {
-                    val name = entry.name
-                    if (stripPrefix == null && name.endsWith("/") && name.count { it == '/' } == 1) {
-                        stripPrefix = name
-                        entry = zis.nextEntry
-                        continue
-                    }
-                    if (!entry.isDirectory) {
-                        val relative = if (stripPrefix != null && name.startsWith(stripPrefix))
-                            name.removePrefix(stripPrefix) else name
-                        out += relative
-                    }
+                while (entry != null) {
+                    if (!entry.isDirectory) names += entry.name
                     zis.closeEntry()
                     entry = zis.nextEntry
                 }
             }
-            return out.sorted()
+            val stripPrefix = commonTopPrefix(names)
+            val out = names.map { if (stripPrefix != null) it.removePrefix(stripPrefix) else it }
+                .filter { it.isNotBlank() }
+            return out.sorted().take(limit)
+        }
+
+        private fun commonTopPrefix(names: List<String>): String? {
+            if (names.isEmpty()) return null
+            val tops = names.map { it.substringBefore("/") }
+            val top = tops.firstOrNull() ?: return null
+            if ("/" !in names.first()) return null
+            if (top.isBlank() || tops.any { it != top }) return null
+            if (names.any { it == top }) return null
+            return "$top/"
         }
     }
 }
