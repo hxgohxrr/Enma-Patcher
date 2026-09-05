@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -22,6 +23,7 @@ import com.enmapatcher.model.AppSettings
 import com.enmapatcher.model.EnmaCfg
 
 private const val DISCORD_URL = "https://discord.gg/83Sn6hAyVP"
+private const val PATCHER_RELEASES_URL = "https://github.com/hxgohxrr/Enma-Patcher/releases"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,11 +37,54 @@ fun MainScreen(
     val appInstalled by viewModel.appInstalled.collectAsState()
     val backupFile by viewModel.backupFile.collectAsState()
     val context = LocalContext.current
+    val updateAvailable by viewModel.updateAvailable.collectAsState()
+
+    val hasDex by viewModel.hasDexPatches.collectAsState()
+
+
+    var showSmaliWarning by remember { mutableStateOf(false) }
+    var showDrmWarning by remember { mutableStateOf(false) }
+    var pendingPatch by remember { mutableStateOf(false) }
+    var updateDismissed by remember { mutableStateOf(false) }
+
+
+    if (pendingPatch && !showSmaliWarning && !showDrmWarning) {
+        LaunchedEffect(Unit) {
+            pendingPatch = false
+            onNavigateToPatch()
+        }
+    }
+
+    if (showSmaliWarning) {
+        SecurityWarningDialog(
+            title = stringResource(R.string.warning_smali_title),
+            message = stringResource(R.string.warning_smali_message),
+            holdButtonText = stringResource(R.string.warning_smali_hold),
+            onConfirm = {
+                showSmaliWarning = false
+
+                val warnings = viewModel.getSecurityWarnings()
+                if (warnings.showDrmWarning) showDrmWarning = true
+
+            },
+            onDismiss = { showSmaliWarning = false; pendingPatch = false },
+        )
+    }
+
+    if (showDrmWarning) {
+        SecurityWarningDialog(
+            title = stringResource(R.string.warning_drm_title),
+            message = stringResource(R.string.warning_drm_message),
+            holdButtonText = stringResource(R.string.warning_drm_hold),
+            onConfirm = { showDrmWarning = false },
+            onDismiss = { showDrmWarning = false; pendingPatch = false },
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
+                title = { Text(config?.appName ?: stringResource(R.string.app_name)) },
                 actions = {
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
@@ -58,13 +103,29 @@ fun MainScreen(
         ) {
             AppInfoCard(config = config, settings = settings)
 
+            if (updateAvailable != null && !updateDismissed) {
+                UpdateBanner(
+                    version = updateAvailable!!,
+                    context = context,
+                    onDismiss = { updateDismissed = true },
+                )
+            }
+
             InstalledStatusCard(
                 packageName = settings.targetPackage,
                 installed = appInstalled,
             )
 
             Button(
-                onClick = onNavigateToPatch,
+                onClick = {
+                    val warnings = viewModel.getSecurityWarnings()
+                    pendingPatch = true
+                    when {
+                        warnings.showSmaliWarning -> showSmaliWarning = true
+                        warnings.showDrmWarning -> showDrmWarning = true
+                        else -> {  }
+                    }
+                },
                 enabled = appInstalled,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -158,7 +219,62 @@ private fun InstalledStatusCard(packageName: String, installed: Boolean) {
 }
 
 @Composable
+private fun UpdateBanner(
+    version: String,
+    context: Context,
+    onDismiss: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    text = stringResource(R.string.update_available_title, version),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+            Text(
+                text = stringResource(R.string.update_available_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PATCHER_RELEASES_URL)))
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary,
+                    ),
+                ) {
+                    Text(stringResource(R.string.update_download))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        stringResource(R.string.update_dismiss),
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AppInfoCard(config: EnmaCfg?, settings: AppSettings) {
+    val mods = settings.effectiveMods()
+    val active = mods.count { it.enabled }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -175,10 +291,29 @@ private fun AppInfoCard(config: EnmaCfg?, settings: AppSettings) {
                 fontWeight = FontWeight.Bold,
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-            Text(
-                text = stringResource(R.string.patches_label, settings.githubRepo, settings.githubBranch),
-                style = MaterialTheme.typography.bodySmall,
-            )
+            if (mods.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.main_no_mods),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.main_mods_active, active),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                for (mod in mods.take(4)) {
+                    Text(
+                        text = mod.displayName.ifBlank { stringResource(R.string.mod_unnamed) },
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                if (mods.size > 4) {
+                    Text(
+                        text = stringResource(R.string.mod_files_more, mods.size - 4),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
         }
     }
 }

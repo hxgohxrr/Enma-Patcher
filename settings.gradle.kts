@@ -16,9 +16,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // ReVanced packages via GitHub Packages (requires PAT in ~/.gradle/gradle.properties)
-        // gpr.user = your GitHub username
-        // gpr.key  = PAT with read:packages scope
         maven {
             url = uri("https://maven.pkg.github.com/ReVanced/revanced-patcher")
             credentials {

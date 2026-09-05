@@ -23,6 +23,15 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+
+        val resLocales = file("src/main/res").listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("values-") }
+            ?.map { it.name.substringAfter("values-") }
+            ?.filter { it.length == 2 || (it.length == 6 && it.contains("-r")) }
+            ?: emptyList()
+        val allLocales = (listOf("es") + resLocales).distinct()
+        resourceConfigurations += allLocales
+        buildConfigField("String[]", "SUPPORTED_LOCALES", "new String[]{${allLocales.joinToString(",") { "\"$it\"" }}}")
     }
 
     signingConfigs {
@@ -49,7 +58,10 @@ android {
 
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures { 
+        compose = true 
+        buildConfig = true
+    }
 
     packaging {
         jniLibs {
@@ -64,6 +76,8 @@ android {
                 "META-INF/*.kotlin_module",
                 "google/protobuf/*.proto",
                 "META-INF/maven/**",
+                "smali.properties",
+                "baksmali.properties",
             )
         }
     }
@@ -93,20 +107,25 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // ReVanced forks of apktool + multidexlib2 — transitive via revanced-patcher
 
-    // APK Signature Scheme v2/v3
+
+
     implementation("com.android.tools.build:apksig:8.3.2")
 
-    // BouncyCastle — keypair generation + cert creation
+
     implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
     implementation("org.bouncycastle:bcprov-jdk15on:1.70")
 
-    // ReVanced Patcher — bundles Androlib (apktool) + Smali for bytecode/resource patching
-    // Credentials: add gpr.user / gpr.key to ~/.gradle/gradle.properties
+
+
     implementation("app.revanced:revanced-patcher:21.0.0")
 
-    // Local JARs (e.g. bundled uber-apk-signer for fallback)
+
+    implementation("org.smali:dexlib2:2.5.2") { exclude(group = "com.google.guava") }
+    implementation("org.smali:smali:2.5.2")   { exclude(group = "com.google.guava") }
+    implementation("com.google.guava:guava:32.1.3-android")
+
+
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
 
     debugImplementation("androidx.compose.ui:ui-tooling")

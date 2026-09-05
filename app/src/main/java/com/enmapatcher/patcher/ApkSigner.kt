@@ -47,7 +47,7 @@ class ApkSigner(private val keystoreDir: File) {
         outputApk
     }
 
-    private fun loadOrCreateKeyPair(): Pair<PrivateKey, X509Certificate> {
+    internal fun loadOrCreateKeyPair(): Pair<PrivateKey, X509Certificate> {
         keystoreDir.mkdirs()
         val ksFile = File(keystoreDir, KEYSTORE_FILE)
 

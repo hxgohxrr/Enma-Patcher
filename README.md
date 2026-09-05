@@ -1,6 +1,7 @@
 # EnmaPatcher
 
 An Android app that patches Yo-kai Watch 1 Smartphone (`jp.co.level5.yws1`) by downloading replacement files from a configurable GitHub repository and applying them to the installed APK.
+The default translation is made by the Project Make a Dream Team
 
 ## Features
 
@@ -87,6 +88,13 @@ KEY_ALIAS=your_alias
 ```
 
 Output is in `app/build/outputs/apk/`.
+
+## Translations
+Spanish - hxgohxrr 
+
+English - hxgohxrr
+
+French - Yo-New 3DS
 
 ## Architecture
 

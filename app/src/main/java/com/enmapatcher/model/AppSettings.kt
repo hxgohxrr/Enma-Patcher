@@ -5,14 +5,47 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class AppSettings(
     val targetPackage: String = "jp.co.level5.yws1",
-    val githubRepo: String = "hxgohxrr/YW1MESP",
+    val githubRepo: String = "ChipLG08/YW1MESP",
     val githubBranch: String = "main",
     val autoInstall: Boolean = false,
     val keepPatchedApk: Boolean = true,
     val language: String = "",
     val backupEnabled: Boolean = false,
     val backupFolderUri: String = "",
+    val drmbUri: String = "",
+    val localPatchZipUri: String = "",
+    val mods: List<ModEntry> = emptyList(),
+    val policyUrl: String = ModPolicy.DEFAULT_URL
 ) {
     val githubOwner: String get() = githubRepo.substringBefore("/")
     val githubRepoName: String get() = githubRepo.substringAfter("/")
+
+    fun effectiveMods(): List<ModEntry> {
+        if (mods.isNotEmpty()) return mods
+        val migrated = mutableListOf<ModEntry>()
+        if (githubRepo.isNotBlank() && "/" in githubRepo) {
+            migrated += ModEntry(
+                kind = ModKind.GITHUB,
+                repo = githubRepo.trim(),
+                branch = githubBranch.trim().ifBlank { "main" },
+                enabled = true
+            )
+        }
+        if (localPatchZipUri.isNotBlank()) {
+            migrated += ModEntry(
+                kind = ModKind.ZIP,
+                zipUri = localPatchZipUri,
+                zipName = localPatchZipUri.substringAfterLast("/"),
+                enabled = true
+            )
+        }
+        return migrated
+    }
+
+    fun withMigratedMods(): AppSettings {
+        if (mods.isNotEmpty()) return this
+        val migrated = effectiveMods()
+        if (migrated.isEmpty()) return this
+        return copy(mods = migrated)
+    }
 }

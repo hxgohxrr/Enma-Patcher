@@ -3,6 +3,8 @@ package com.enmapatcher.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -126,61 +128,85 @@ private fun SuccessPanel(
     context: Context,
     onBack: () -> Unit,
 ) {
-    var showDialog by remember { mutableStateOf(false) }
     var pendingInstall by rememberSaveable { mutableStateOf(false) }
+    var pendingInstallAfterPerm by rememberSaveable { mutableStateOf(false) }
+    var showUninstallDialog by remember { mutableStateOf(false) }
 
-    // After launching system uninstaller, wait for user to return.
-    // On resume: if package is gone, auto-trigger install.
-    if (pendingInstall) {
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) {
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (pendingInstallAfterPerm) {
+                    val canInstall = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                        context.packageManager.canRequestPackageInstalls()
+                    if (canInstall) {
+                        pendingInstallAfterPerm = false
+                        val installed = runCatching {
+                            context.packageManager.getApplicationInfo(targetPackage, 0); true
+                        }.getOrDefault(false)
+                        if (installed) showUninstallDialog = true
+                        else runCatching { installApk(context, outputPath) }
+                    }
+                }
+                if (pendingInstall) {
                     val stillInstalled = runCatching {
-                        context.packageManager.getApplicationInfo(targetPackage, 0)
-                        true
+                        context.packageManager.getApplicationInfo(targetPackage, 0); true
                     }.getOrDefault(false)
                     if (!stillInstalled) {
-                        runCatching { installApk(context, outputPath) }
                         pendingInstall = false
+                        val canInstall = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                            context.packageManager.canRequestPackageInstalls()
+                        if (canInstall) {
+                            runCatching { installApk(context, outputPath) }
+                        } else {
+                            pendingInstallAfterPerm = true
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                        Uri.parse("package:${context.packageName}"))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        }
                     }
                 }
             }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
-    }
-
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text(stringResource(R.string.install_warning_title)) },
-            text = { Text(stringResource(R.string.install_warning_body)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDialog = false
-                    pendingInstall = true
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_DELETE, Uri.parse("package:$targetPackage"))
-                        )
-                    }
-                }) {
-                    Text(stringResource(R.string.uninstall_and_install))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+    if (showUninstallDialog) {
+        AlertDialog(
+            onDismissRequest = { showUninstallDialog = false },
+            title = { Text(stringResource(R.string.uninstall_first_title)) },
+            text = { Text(stringResource(R.string.uninstall_first_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUninstallDialog = false
+                    pendingInstall = true
+                    runCatching {
+                        context.startActivity(
+                            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:$targetPackage"))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                }) { Text(stringResource(R.string.open_app_settings)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUninstallDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
         Icon(
             Icons.Default.Check,
             contentDescription = null,
@@ -195,11 +221,28 @@ private fun SuccessPanel(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onBack) { Text(stringResource(R.string.back)) }
             Button(onClick = {
-                val installed = runCatching {
-                    context.packageManager.getApplicationInfo(targetPackage, 0)
-                    true
-                }.getOrDefault(false)
-                if (installed) showDialog = true else installApk(context, outputPath)
+                val canInstall = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                    context.packageManager.canRequestPackageInstalls()
+                if (!canInstall) {
+                    pendingInstallAfterPerm = true
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:${context.packageName}"))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                } else {
+                    val installed = runCatching {
+                        context.packageManager.getApplicationInfo(targetPackage, 0); true
+                    }.getOrDefault(false)
+                    if (installed) {
+                        showUninstallDialog = true
+                    } else {
+                        runCatching { installApk(context, outputPath) }
+
+                    }
+                }
             }) {
                 Text(stringResource(R.string.install_apk))
             }
