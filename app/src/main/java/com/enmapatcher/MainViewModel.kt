@@ -93,6 +93,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             checkInstalled()
             fetchRemoteConfig()
+            refreshModConfigs()
             checkExistingBackup()
         }
     }
@@ -144,6 +145,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _settings.value = migrated
         checkInstalled()
         fetchRemoteConfig()
+        refreshModConfigs()
         applyLocale(migrated.language)
         viewModelScope.launch {
             persistSettings(migrated)
@@ -185,6 +187,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _settings.value = base
         viewModelScope.launch { persistSettings(base) }
         fetchRemoteConfig()
+        refreshModConfigs()
     }
 
     fun moveMod(id: String, delta: Int) {
@@ -198,6 +201,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val base = _settings.value.copy(mods = list)
         _settings.value = base
         viewModelScope.launch { persistSettings(base) }
+        refreshModConfigs()
     }
 
     fun toggleMod(id: String, enabled: Boolean) {
@@ -206,6 +210,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _settings.value = base
         viewModelScope.launch { persistSettings(base) }
         fetchRemoteConfig()
+        refreshModConfigs()
+    }
+
+    private val _gameVersion = MutableStateFlow<String?>(null)
+    val gameVersion: StateFlow<String?> = _gameVersion.asStateFlow()
+
+    private val _modConfigs = MutableStateFlow<Map<String, EnmaCfg>>(emptyMap())
+    val modConfigs: StateFlow<Map<String, EnmaCfg>> = _modConfigs.asStateFlow()
+
+    fun refreshModConfigs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val map = mutableMapOf<String, EnmaCfg>()
+            for (mod in _settings.value.effectiveMods()) {
+                val cfg = runCatching {
+                    if (mod.kind == ModKind.GITHUB && "/" in mod.repo) {
+                        GithubPatchSource.fetchRemoteConfigOrNull(
+                            mod.owner,
+                            mod.repoName,
+                            mod.branch.ifBlank { "main" },
+                        )
+                    } else if (mod.kind == ModKind.ZIP && mod.zipUri.isNotBlank()) {
+                        context.contentResolver.openInputStream(Uri.parse(mod.zipUri))?.use { stream ->
+                            GithubPatchSource.readLocalConfig(stream)
+                        }
+                    } else {
+                        null
+                    }
+                }.getOrNull()
+                if (cfg != null) map[mod.id] = cfg
+            }
+            _modConfigs.value = map
+            _gameVersion.value = runCatching {
+                val pm = context.packageManager
+                val pkg = _settings.value.targetPackage
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    pm.getPackageInfo(pkg, android.content.pm.PackageManager.PackageInfoFlags.of(0))?.versionName
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(pkg, 0)?.versionName
+                }
+            }.getOrNull()
+        }
     }
 
     fun getSecurityWarnings(): SecurityWarnings {

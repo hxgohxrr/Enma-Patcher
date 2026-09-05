@@ -394,6 +394,42 @@ class GithubPatchSource(private val settings: AppSettings) {
             return config to patches
         }
 
+        fun readLocalConfig(inputStream: InputStream): EnmaCfg? {
+            var found: EnmaCfg? = null
+            ZipInputStream(inputStream.buffered(BUFFER)).use { zis ->
+                val names = ArrayList<String>()
+                val blobs = HashMap<String, ByteArray>()
+                var entry = zis.nextEntry
+                while (entry != null && found == null) {
+                    if (!entry.isDirectory) {
+                        try {
+                            val bytes = readBounded(zis, 8L * 1024L * 1024L, entry.name)
+                            names += entry.name
+                            blobs[entry.name] = bytes
+                        } catch (_: Exception) {
+                        }
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+                while (entry != null) {
+                    if (!entry.isDirectory) names += entry.name
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+                val stripPrefix = commonTopPrefix(names)
+                for ((name, bytes) in blobs) {
+                    val relative = if (stripPrefix != null) name.removePrefix(stripPrefix) else name
+                    if (relative == "enmapatcher.cfg.json") {
+                        found = runCatching { EnmaCfg.fromJson(bytes.toString(Charsets.UTF_8)) }
+                            .getOrNull()
+                        break
+                    }
+                }
+            }
+            return found
+        }
+
         fun listLocalZipEntries(inputStream: InputStream, limit: Int = 500): List<String> {
             val names = ArrayList<String>()
             ZipInputStream(inputStream.buffered(BUFFER)).use { zis ->

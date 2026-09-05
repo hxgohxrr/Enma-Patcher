@@ -38,6 +38,9 @@ import com.enmapatcher.R
 import com.enmapatcher.model.AppSettings
 import com.enmapatcher.model.ModEntry
 import com.enmapatcher.model.ModKind
+import com.enmapatcher.model.peerConflict
+import com.enmapatcher.model.supportsAndroid
+import com.enmapatcher.model.versionBlocked
 import com.enmapatcher.patcher.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,6 +57,9 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsState()
     val context = LocalContext.current
     val mods = settings.effectiveMods()
+    val modConfigs by viewModel.modConfigs.collectAsState()
+    val gameVersion by viewModel.gameVersion.collectAsState()
+    LaunchedEffect(Unit) { viewModel.refreshModConfigs() }
     var autoInstall by remember(settings.autoInstall) { mutableStateOf(settings.autoInstall) }
     var language by remember(settings.language) { mutableStateOf(settings.language) }
     var backupEnabled by remember(settings.backupEnabled) { mutableStateOf(settings.backupEnabled) }
@@ -243,6 +249,9 @@ fun SettingsScreen(
                         mod = mod,
                         isFirst = index == 0,
                         isLast = index == mods.size - 1,
+                        allMods = mods,
+                        configs = modConfigs,
+                        gameVersion = gameVersion,
                         onMoveUp = { viewModel.moveMod(mod.id, -1) },
                         onMoveDown = { viewModel.moveMod(mod.id, 1) },
                         onDelete = { viewModel.removeMod(mod.id) },
@@ -456,11 +465,15 @@ fun SettingsScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModCard(
     mod: ModEntry,
     isFirst: Boolean,
     isLast: Boolean,
+    allMods: List<ModEntry>,
+    configs: Map<String, com.enmapatcher.model.EnmaCfg>,
+    gameVersion: String?,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onDelete: () -> Unit,
@@ -494,6 +507,58 @@ private fun ModCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Switch(checked = mod.enabled, onCheckedChange = onToggle)
+            }
+            val cfg = configs[mod.id]
+            val androidOk = mod.supportsAndroid(configs)
+            val iosOk = cfg?.effectiveIos() == true
+            val conflict = mod.peerConflict(allMods, configs)
+            val blockedVer = mod.versionBlocked(gameVersion, configs)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (androidOk) {
+                    AssistChip(onClick = {}, label = { Text("Android") })
+                }
+                if (iosOk) {
+                    AssistChip(onClick = {}, label = { Text("iOS") })
+                }
+                val license = cfg?.license.orEmpty()
+                if (license.isNotBlank()) {
+                    AssistChip(onClick = {}, label = { Text(license) })
+                }
+                if (cfg?.aiContent == true) {
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.ai_badge)) })
+                }
+                val rec = cfg?.recommendedVersion?.takeIf { it.isNotBlank() }
+                if (rec != null) {
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.mod_rec_version, rec)) })
+                }
+                if (conflict == null && blockedVer == null && androidOk) {
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.mod_status_ok)) })
+                }
+            }
+            if (!androidOk) {
+                Text(
+                    text = stringResource(R.string.mod_issue_platform),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (conflict != null) {
+                Text(
+                    text = stringResource(R.string.mod_issue_conflict, conflict),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (blockedVer != null) {
+                Text(
+                    text = stringResource(R.string.mod_issue_version, blockedVer),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             if (!mod.enabled) {
                 Text(

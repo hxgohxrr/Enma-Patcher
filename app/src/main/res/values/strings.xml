@@ -151,4 +151,11 @@
     <string name="saves_import_done">%1$d archivos aplicados</string>
     <string name="saves_excluded_main_note">main.bin se excluye al importar y se guarda backup de tus partidas actuales.</string>
     <string name="saves_backup_done">Backup: %1$s</string>
+    <string name="step_download_mod_skipped">Omitido: no es para Android</string>
+    <string name="ai_badge">AI Usage Present</string>
+    <string name="mod_rec_version">Rec.: %1$s</string>
+    <string name="mod_status_ok">Sin problemas</string>
+    <string name="mod_issue_conflict">Conflicto con %1$s</string>
+    <string name="mod_issue_version">Versión %1$s incompatible</string>
+    <string name="mod_issue_platform">No disponible en Android</string>
 </resources>

@@ -151,4 +151,11 @@
     <string name="saves_import_done">%1$d ファイルを適用</string>
     <string name="saves_excluded_main_note">インポート時はmain.binを除外し、現在のセーブをバックアップ。</string>
     <string name="saves_backup_done">バックアップ: %1$s</string>
+    <string name="step_download_mod_skipped">スキップ: Android非対応</string>
+    <string name="ai_badge">AI Usage Present</string>
+    <string name="mod_rec_version">推奨: %1$s</string>
+    <string name="mod_status_ok">問題なし</string>
+    <string name="mod_issue_conflict">%1$s と競合</string>
+    <string name="mod_issue_version">バージョン %1$s は非対応</string>
+    <string name="mod_issue_platform">Androidでは利用不可</string>
 </resources>

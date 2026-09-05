@@ -151,4 +151,11 @@
     <string name="saves_import_done">%1$d file applicati</string>
     <string name="saves_excluded_main_note">main.bin è escluso all’importazione e i salvataggi attuali vengono salvati.</string>
     <string name="saves_backup_done">Backup: %1$s</string>
+    <string name="step_download_mod_skipped">Ignorato: non per Android</string>
+    <string name="ai_badge">AI Usage Present</string>
+    <string name="mod_rec_version">Cons.: %1$s</string>
+    <string name="mod_status_ok">Nessun problema</string>
+    <string name="mod_issue_conflict">Conflitto con %1$s</string>
+    <string name="mod_issue_version">Versione %1$s non supportata</string>
+    <string name="mod_issue_platform">Non disponibile su Android</string>
 </resources>

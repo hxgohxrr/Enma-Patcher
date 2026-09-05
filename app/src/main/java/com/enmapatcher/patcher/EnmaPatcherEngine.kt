@@ -11,6 +11,7 @@ import com.enmapatcher.model.ModKind
 import com.enmapatcher.model.ModPolicy
 import com.enmapatcher.model.PatchStep
 import com.enmapatcher.model.PatchStepStatus
+import com.enmapatcher.model.peerConflict
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -85,6 +86,7 @@ class EnmaPatcherEngine(private val context: Context) {
         }
         var mergedConfig = EnmaCfg()
         val perModPatches = ArrayList<Triple<ModEntry, EnmaCfg, Map<String, ByteArray>>>(mods.size)
+        val modTitles = HashMap<String, String>()
         val perModCounts = LinkedHashMap<String, Int>()
         for ((index, mod) in mods.withIndex()) {
             val modLabel = modLabel(mod)
@@ -110,6 +112,7 @@ class EnmaPatcherEngine(private val context: Context) {
                 policyChecker.checkPaths(policy, files.keys)
                 policyChecker.checkContents(policy, files)
                 perModPatches += Triple(mod, cfg, files)
+                modTitles[mod.id] = title
                 perModCounts[mod.id] = files.size
                 if (mergedConfig.appName.isNullOrBlank() && !cfg.appName.isNullOrBlank()) {
                     mergedConfig = mergedConfig.copy(appName = cfg.appName)
@@ -139,8 +142,39 @@ class EnmaPatcherEngine(private val context: Context) {
             splitApks = splits
             currentLabel = label
         }
+        val cfgById = perModPatches.associate { it.first.id to it.second }
+        val gameVersion: String? = runCatching {
+            val pm = context.packageManager
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                pm.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))?.versionName
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(packageName, 0)?.versionName
+            }
+        }.getOrNull()
+        for ((mod, cfg, _) in perModPatches) {
+            if (gameVersion != null &&
+                cfg.uncompatibleVersions.any { it.trim() == gameVersion.trim() }
+            ) {
+                throw IOException("GameVersionBlocked:${modLabel(mod)}:$gameVersion")
+            }
+        }
+        for ((mod, _, _) in perModPatches) {
+            val other = mod.peerConflict(mods, cfgById)
+            if (other != null) throw IOException("ModConflict:${modLabel(mod)}:$other")
+        }
         var patchMap = LinkedHashMap<String, ByteArray>()
-        for ((_, cfg, files) in perModPatches.asReversed()) {
+        for ((mod, cfg, files) in perModPatches.asReversed()) {
+            if (!cfg.effectiveAndroid()) {
+                onStep(
+                    PatchStep(
+                        modTitles[mod.id] ?: modLabel(mod),
+                        context.getString(R.string.step_download_mod_skipped),
+                        PatchStepStatus.DONE,
+                    )
+                )
+                continue
+            }
             for ((path, bytes) in files) {
                 if (cfg.allows(path)) patchMap[path] = bytes
             }
