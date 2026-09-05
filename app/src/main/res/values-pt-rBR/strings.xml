@@ -131,4 +131,24 @@
     <string name="policy_url_sub">Arquivo raw do GitHub com repos e palavras proibidas. Sempre verificado.</string>
     <string name="main_mods_active">%1$d mods ativos</string>
     <string name="main_no_mods">Sem mods ativos</string>
+    <string name="saves_title">Saves</string>
+    <string name="saves_sub">Exporte seus saves para um .zip ou importe novos. Na importação só head.yw e gameN.yw são copiados; main.bin é excluído e um backup é feito antes.</string>
+    <string name="saves_open">Saves</string>
+    <string name="saves_not_found">Nenhum save encontrado</string>
+    <string name="saves_no_root_hint">Sem root só a pasta externa (Android/data) pode ser lida. Com root a interna também é buscada.</string>
+    <string name="saves_refresh">Atualizar</string>
+    <string name="saves_select_dir">Pasta de saves</string>
+    <string name="saves_root_tag">root</string>
+    <string name="saves_slots_title">Arquivos</string>
+    <string name="saves_present">Presente</string>
+    <string name="saves_missing">Ausente</string>
+    <string name="saves_export">Exportar saves</string>
+    <string name="saves_exporting">Exportando…</string>
+    <string name="saves_share">Compartilhar .zip</string>
+    <string name="saves_import">Importar saves</string>
+    <string name="saves_import_pick">Escolher .zip</string>
+    <string name="saves_import_apply">Aplicar importação</string>
+    <string name="saves_import_done">%1$d arquivos aplicados</string>
+    <string name="saves_excluded_main_note">main.bin é excluído na importação e seus saves atuais recebem backup.</string>
+    <string name="saves_backup_done">Backup: %1$s</string>
 </resources>

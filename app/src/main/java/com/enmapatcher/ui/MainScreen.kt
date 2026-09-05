@@ -31,6 +31,7 @@ fun MainScreen(
     viewModel: MainViewModel,
     onNavigateToSettings: () -> Unit,
     onNavigateToPatch: () -> Unit,
+    onNavigateToSaves: () -> Unit,
 ) {
     val config by viewModel.config.collectAsState()
     val settings by viewModel.settings.collectAsState()
@@ -143,6 +144,16 @@ fun MainScreen(
                 ) {
                     Text(stringResource(R.string.revert_backup), style = MaterialTheme.typography.bodyMedium)
                 }
+            }
+
+            OutlinedButton(
+                onClick = onNavigateToSaves,
+                enabled = appInstalled,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+            ) {
+                Text(stringResource(R.string.saves_open), style = MaterialTheme.typography.bodyMedium)
             }
 
             if (!appInstalled) {

@@ -21,6 +21,8 @@ import com.enmapatcher.model.PatchStepStatus
 import com.enmapatcher.patcher.ApkBundleProcessor
 import com.enmapatcher.patcher.EnmaPatcherEngine
 import com.enmapatcher.patcher.GithubPatchSource
+import com.enmapatcher.patcher.RootShell
+import com.enmapatcher.patcher.SaveManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +40,18 @@ private val SETTINGS_KEY = stringPreferencesKey("settings")
 data class SecurityWarnings(
     val showDrmWarning: Boolean = false,
     val showSmaliWarning: Boolean = false,
+)
+
+data class SaveUiState(
+    val loading: Boolean = true,
+    val rooted: Boolean = false,
+    val dirs: List<SaveManager.SaveDir> = emptyList(),
+    val selectedPath: String? = null,
+    val busy: Boolean = false,
+    val error: String? = null,
+    val exportedZip: File? = null,
+    val preview: SaveManager.SaveZip? = null,
+    val lastImport: SaveManager.ImportResult? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -293,5 +307,92 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetState() {
         _patchState.value = PatchState.Idle
+    }
+
+    private val _saveState = MutableStateFlow(SaveUiState())
+    val saveState: StateFlow<SaveUiState> = _saveState.asStateFlow()
+
+    fun refreshSaves() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _saveState.value = _saveState.value.copy(loading = true, error = null)
+            try {
+                val manager = SaveManager(context)
+                val rooted = RootShell.available()
+                val dirs = manager.locate(_settings.value.targetPackage)
+                val prev = _saveState.value.selectedPath
+                val selected = dirs.firstOrNull { it.path == prev }?.path ?: dirs.firstOrNull()?.path
+                _saveState.value = SaveUiState(
+                    loading = false,
+                    rooted = rooted,
+                    dirs = dirs,
+                    selectedPath = selected,
+                )
+            } catch (e: Exception) {
+                _saveState.value = _saveState.value.copy(loading = false, error = e.message)
+            }
+        }
+    }
+
+    fun selectSaveDir(path: String) {
+        _saveState.value = _saveState.value.copy(
+            selectedPath = path,
+            exportedZip = null,
+            preview = null,
+            lastImport = null,
+            error = null,
+        )
+    }
+
+    fun exportSaves() {
+        val dir = _saveState.value.dirs.firstOrNull { it.path == _saveState.value.selectedPath }
+            ?: return
+        if (_saveState.value.busy) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _saveState.value = _saveState.value.copy(busy = true, error = null, exportedZip = null)
+            try {
+                val zip = SaveManager(context).exportToZip(dir)
+                _saveState.value = _saveState.value.copy(busy = false, exportedZip = zip)
+            } catch (e: Exception) {
+                _saveState.value = _saveState.value.copy(busy = false, error = e.message)
+            }
+        }
+    }
+
+    fun previewSaveZip(uriString: String) {
+        if (_saveState.value.busy) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _saveState.value = _saveState.value.copy(busy = true, error = null, preview = null)
+            try {
+                val preview = SaveManager(context).previewZip(Uri.parse(uriString))
+                _saveState.value = _saveState.value.copy(busy = false, preview = preview)
+            } catch (e: Exception) {
+                _saveState.value = _saveState.value.copy(busy = false, error = e.message)
+            }
+        }
+    }
+
+    fun importSaveZip(uriString: String) {
+        val dir = _saveState.value.dirs.firstOrNull { it.path == _saveState.value.selectedPath }
+            ?: return
+        if (_saveState.value.busy) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _saveState.value = _saveState.value.copy(busy = true, error = null, lastImport = null)
+            try {
+                val result = SaveManager(context).importFromZip(dir, Uri.parse(uriString))
+                _saveState.value = _saveState.value.copy(busy = false, lastImport = result)
+                refreshSaves()
+            } catch (e: Exception) {
+                _saveState.value = _saveState.value.copy(busy = false, error = e.message)
+            }
+        }
+    }
+
+    fun clearSaveMessages() {
+        _saveState.value = _saveState.value.copy(
+            error = null,
+            exportedZip = null,
+            preview = null,
+            lastImport = null,
+        )
     }
 }

@@ -18,6 +18,7 @@ import androidx.navigation.navArgument
 import com.enmapatcher.model.PatchState
 import com.enmapatcher.ui.MainScreen
 import com.enmapatcher.ui.PatchScreen
+import com.enmapatcher.ui.SaveScreen
 import com.enmapatcher.ui.SettingsScreen
 import com.enmapatcher.ui.theme.EnmaPatcherTheme
 
@@ -54,6 +55,14 @@ private fun EnmaNavGraph(viewModel: MainViewModel) {
                     viewModel.patch()
                     navController.navigate("patch")
                 },
+                onNavigateToSaves = { navController.navigate("saves") },
+            )
+        }
+
+        composable("saves") {
+            SaveScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
             )
         }
 

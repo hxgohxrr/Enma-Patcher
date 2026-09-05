@@ -131,4 +131,24 @@
     <string name="policy_url_sub">Fichier raw GitHub avec les dépôts et mots interdits. Toujours vérifié.</string>
     <string name="main_mods_active">%1$d mods actifs</string>
     <string name="main_no_mods">Aucun mod actif</string>
+    <string name="saves_title">Parties sauvegardées</string>
+    <string name="saves_sub">Exporte tes parties en .zip ou importes-en de nouvelles. Seuls head.yw et gameN.yw sont copiés à l’import ; main.bin est exclu et une sauvegarde est créée d’abord.</string>
+    <string name="saves_open">Parties</string>
+    <string name="saves_not_found">Aucune partie trouvée</string>
+    <string name="saves_no_root_hint">Sans root, seul le dossier externe (Android/data) est lisible. Avec root, l’interne est aussi cherché.</string>
+    <string name="saves_refresh">Actualiser</string>
+    <string name="saves_select_dir">Dossier de sauvegarde</string>
+    <string name="saves_root_tag">root</string>
+    <string name="saves_slots_title">Fichiers</string>
+    <string name="saves_present">Présent</string>
+    <string name="saves_missing">Absent</string>
+    <string name="saves_export">Exporter les parties</string>
+    <string name="saves_exporting">Export en cours…</string>
+    <string name="saves_share">Partager le .zip</string>
+    <string name="saves_import">Importer des parties</string>
+    <string name="saves_import_pick">Choisir un .zip</string>
+    <string name="saves_import_apply">Appliquer l’import</string>
+    <string name="saves_import_done">%1$d fichiers appliqués</string>
+    <string name="saves_excluded_main_note">main.bin est exclu à l’import et tes parties actuelles sont sauvegardées.</string>
+    <string name="saves_backup_done">Sauvegarde : %1$s</string>
 </resources>

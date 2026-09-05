@@ -131,4 +131,24 @@
     <string name="policy_url_sub">File raw GitHub con repository e parole vietate. Sempre verificato.</string>
     <string name="main_mods_active">%1$d mod attive</string>
     <string name="main_no_mods">Nessuna mod attiva</string>
+    <string name="saves_title">Salvataggi</string>
+    <string name="saves_sub">Esporta i salvataggi in .zip o importane di nuovi. All’importazione solo head.yw e gameN.yw vengono copiati; main.bin è escluso e viene prima fatto un backup.</string>
+    <string name="saves_open">Salvataggi</string>
+    <string name="saves_not_found">Nessun salvataggio trovato</string>
+    <string name="saves_no_root_hint">Senza root solo la cartella esterna (Android/data) è leggibile. Con root si cerca anche quella interna.</string>
+    <string name="saves_refresh">Aggiorna</string>
+    <string name="saves_select_dir">Cartella salvataggi</string>
+    <string name="saves_root_tag">root</string>
+    <string name="saves_slots_title">File</string>
+    <string name="saves_present">Presente</string>
+    <string name="saves_missing">Mancante</string>
+    <string name="saves_export">Esporta salvataggi</string>
+    <string name="saves_exporting">Esportazione…</string>
+    <string name="saves_share">Condividi .zip</string>
+    <string name="saves_import">Importa salvataggi</string>
+    <string name="saves_import_pick">Scegli .zip</string>
+    <string name="saves_import_apply">Applica importazione</string>
+    <string name="saves_import_done">%1$d file applicati</string>
+    <string name="saves_excluded_main_note">main.bin è escluso all’importazione e i salvataggi attuali vengono salvati.</string>
+    <string name="saves_backup_done">Backup: %1$s</string>
 </resources>

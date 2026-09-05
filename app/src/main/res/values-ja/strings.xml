@@ -131,4 +131,24 @@
     <string name="policy_url_sub">禁止リポジトリと言葉を含むGitHub rawファイル。常に確認されます。</string>
     <string name="main_mods_active">有効なmod %1$d 件</string>
     <string name="main_no_mods">有効なmodなし</string>
+    <string name="saves_title">セーブデータ</string>
+    <string name="saves_sub">セーブデータを.zipにエクスポート、または新規インポート。インポート時はhead.ywとgameN.ywのみコピーされ、main.binは除外、先にバックアップを作成。</string>
+    <string name="saves_open">セーブ</string>
+    <string name="saves_not_found">セーブデータが見つかりません</string>
+    <string name="saves_no_root_hint">rootなしでは外部フォルダ (Android/data) のみ読み取り可。rootありでは内部も検索。</string>
+    <string name="saves_refresh">更新</string>
+    <string name="saves_select_dir">セーブフォルダ</string>
+    <string name="saves_root_tag">root</string>
+    <string name="saves_slots_title">ファイル</string>
+    <string name="saves_present">あり</string>
+    <string name="saves_missing">なし</string>
+    <string name="saves_export">セーブをエクスポート</string>
+    <string name="saves_exporting">エクスポート中…</string>
+    <string name="saves_share">.zipを共有</string>
+    <string name="saves_import">セーブをインポート</string>
+    <string name="saves_import_pick">.zipを選択</string>
+    <string name="saves_import_apply">インポートを適用</string>
+    <string name="saves_import_done">%1$d ファイルを適用</string>
+    <string name="saves_excluded_main_note">インポート時はmain.binを除外し、現在のセーブをバックアップ。</string>
+    <string name="saves_backup_done">バックアップ: %1$s</string>
 </resources>
