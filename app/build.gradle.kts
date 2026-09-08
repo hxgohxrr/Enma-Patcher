@@ -117,10 +117,6 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk15on:1.70")
 
 
-
-    implementation("app.revanced:revanced-patcher:21.0.0")
-
-
     implementation("org.smali:dexlib2:2.5.2") { exclude(group = "com.google.guava") }
     implementation("org.smali:smali:2.5.2")   { exclude(group = "com.google.guava") }
     implementation("com.google.guava:guava:32.1.3-android")

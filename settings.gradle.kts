@@ -16,27 +16,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven {
-            url = uri("https://maven.pkg.github.com/ReVanced/revanced-patcher")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orElse("token").get()
-                password = providers.gradleProperty("gpr.key").orElse("").get()
-            }
-        }
-        maven {
-            url = uri("https://maven.pkg.github.com/ReVanced/apktool")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orElse("token").get()
-                password = providers.gradleProperty("gpr.key").orElse("").get()
-            }
-        }
-        maven {
-            url = uri("https://maven.pkg.github.com/ReVanced/multidexlib2")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orElse("token").get()
-                password = providers.gradleProperty("gpr.key").orElse("").get()
-            }
-        }
         maven { url = uri("https://jitpack.io") }
     }
 }
