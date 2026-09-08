@@ -42,6 +42,11 @@ data class SecurityWarnings(
     val showSmaliWarning: Boolean = false,
 )
 
+data class AppEntry(
+    val label: String,
+    val packageName: String,
+)
+
 data class SaveUiState(
     val loading: Boolean = true,
     val rooted: Boolean = false,
@@ -137,7 +142,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun checkInstalled() {
-        _appInstalled.value = ApkBundleProcessor(context).isInstalled(_settings.value.targetPackage)
+        _appInstalled.value = ApkBundleProcessor(context).isInstalled(_settings.value.effectivePackage())
+    }
+
+    private val _installedApps = MutableStateFlow<List<AppEntry>>(emptyList())
+    val installedApps: StateFlow<List<AppEntry>> = _installedApps.asStateFlow()
+
+    fun refreshInstalledApps() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pm = context.packageManager
+            val apps = runCatching {
+                pm.getInstalledApplications(0).mapNotNull { info ->
+                    val pkg = info.packageName ?: return@mapNotNull null
+                    val label = runCatching { pm.getApplicationLabel(info).toString() }.getOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: pkg
+                    AppEntry(label, pkg)
+                }.sortedBy { it.label.lowercase() }
+            }.getOrDefault(emptyList())
+            _installedApps.value = apps
+        }
+    }
+
+    fun setTargetMode(mode: String) {
+        val base = _settings.value.copy(targetMode = if (mode == "manual") "manual" else "auto")
+        _settings.value = base
+        viewModelScope.launch { persistSettings(base) }
+        checkInstalled()
+        refreshModConfigs()
+    }
+
+    fun setManualPackage(pkg: String) {
+        val base = _settings.value.copy(manualPackage = pkg.trim(), targetMode = "manual")
+        _settings.value = base
+        viewModelScope.launch { persistSettings(base) }
+        checkInstalled()
+        refreshModConfigs()
+    }
+
+    fun setAppNameOverride(name: String) {
+        val base = _settings.value.copy(appNameOverride = name)
+        _settings.value = base
+        viewModelScope.launch { persistSettings(base) }
     }
 
     fun updateSettings(newSettings: AppSettings) {
@@ -243,7 +288,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _modConfigs.value = map
             _gameVersion.value = runCatching {
                 val pm = context.packageManager
-                val pkg = _settings.value.targetPackage
+                val pkg = _settings.value.effectivePackage()
                 if (android.os.Build.VERSION.SDK_INT >= 33) {
                     pm.getPackageInfo(pkg, android.content.pm.PackageManager.PackageInfoFlags.of(0))?.versionName
                 } else {
@@ -310,7 +355,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun patch() {
-        val packageName = _settings.value.targetPackage
+        val packageName = _settings.value.effectivePackage()
         if (_patchState.value is PatchState.Patching) return
         viewModelScope.launch(Dispatchers.IO) {
             val steps = mutableListOf<PatchStep>()
@@ -364,7 +409,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val manager = SaveManager(context)
                 val rooted = RootShell.available()
-                val dirs = manager.locate(_settings.value.targetPackage)
+                val dirs = manager.locate(_settings.value.effectivePackage())
                 val prev = _saveState.value.selectedPath
                 val selected = dirs.firstOrNull { it.path == prev }?.path ?: dirs.firstOrNull()?.path
                 _saveState.value = SaveUiState(

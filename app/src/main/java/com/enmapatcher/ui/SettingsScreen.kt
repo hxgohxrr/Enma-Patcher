@@ -59,6 +59,7 @@ fun SettingsScreen(
     val mods = settings.effectiveMods()
     val modConfigs by viewModel.modConfigs.collectAsState()
     val gameVersion by viewModel.gameVersion.collectAsState()
+    val config by viewModel.config.collectAsState()
     LaunchedEffect(Unit) { viewModel.refreshModConfigs() }
     var autoInstall by remember(settings.autoInstall) { mutableStateOf(settings.autoInstall) }
     var language by remember(settings.language) { mutableStateOf(settings.language) }
@@ -68,6 +69,7 @@ fun SettingsScreen(
     var drmbCopying by remember { mutableStateOf(false) }
     var drmbError by remember { mutableStateOf<String?>(null) }
     var policyUrl by remember(settings.policyUrl) { mutableStateOf(settings.policyUrl) }
+    var appNameOverride by remember(settings.appNameOverride) { mutableStateOf(settings.appNameOverride) }
     var showAddRepo by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val drmbPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -281,6 +283,21 @@ fun SettingsScreen(
                 }
             }
             HorizontalDivider()
+            Text(stringResource(R.string.appname_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.appname_sub),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = appNameOverride,
+                onValueChange = { appNameOverride = it },
+                label = { Text(stringResource(R.string.appname_title)) },
+                placeholder = { Text(config?.appName ?: stringResource(R.string.appname_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            HorizontalDivider()
             Text(stringResource(R.string.policy_url_label), style = MaterialTheme.typography.titleMedium)
             Text(
                 stringResource(R.string.policy_url_sub),
@@ -453,6 +470,7 @@ fun SettingsScreen(
                             localPatchZipUri = viewModel.settings.value.localPatchZipUri,
                             mods = currentMods,
                             policyUrl = policyUrl.trim(),
+                            appNameOverride = appNameOverride.trim(),
                         )
                     )
                     onBack()

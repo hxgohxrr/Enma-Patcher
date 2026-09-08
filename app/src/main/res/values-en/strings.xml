@@ -158,4 +158,13 @@
     <string name="mod_issue_conflict">Conflicts with %1$s</string>
     <string name="mod_issue_version">Version %1$s unsupported</string>
     <string name="mod_issue_platform">Not available on Android</string>
+    <string name="appname_title">App name</string>
+    <string name="appname_sub">Empty = use the mod appName</string>
+    <string name="appname_hint">Custom name</string>
+    <string name="target_title">App to patch</string>
+    <string name="target_auto">Automatic</string>
+    <string name="target_manual">Manual</string>
+    <string name="target_pick">Choose app</string>
+    <string name="target_chosen">%1$s (%2$s)</string>
+    <string name="target_search">Search</string>
 </resources>

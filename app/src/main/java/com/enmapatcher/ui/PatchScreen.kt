@@ -59,7 +59,7 @@ fun PatchScreen(
                 is PatchState.Patching -> PatchingProgress(steps = s.steps)
                 is PatchState.Success -> SuccessPanel(
                     outputPath = s.outputPath,
-                    targetPackage = settings.targetPackage,
+                    targetPackage = settings.effectivePackage(),
                     context = context,
                     onBack = { viewModel.resetState(); onBack() },
                 )

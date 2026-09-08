@@ -15,10 +15,22 @@ data class AppSettings(
     val drmbUri: String = "",
     val localPatchZipUri: String = "",
     val mods: List<ModEntry> = emptyList(),
-    val policyUrl: String = ModPolicy.DEFAULT_URL
+    val policyUrl: String = ModPolicy.DEFAULT_URL,
+    val targetMode: String = "auto",
+    val manualPackage: String = "",
+    val appNameOverride: String = ""
 ) {
     val githubOwner: String get() = githubRepo.substringBefore("/")
     val githubRepoName: String get() = githubRepo.substringAfter("/")
+
+    fun effectivePackage(): String =
+        if (targetMode == "manual" && manualPackage.isNotBlank()) manualPackage.trim()
+        else targetPackage
+
+    fun effectiveAppName(configured: String?): String? {
+        if (appNameOverride.isNotBlank()) return appNameOverride
+        return configured?.takeIf { it.isNotBlank() }
+    }
 
     fun effectiveMods(): List<ModEntry> {
         if (mods.isNotEmpty()) return mods

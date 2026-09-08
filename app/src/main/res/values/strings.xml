@@ -158,4 +158,13 @@
     <string name="mod_issue_conflict">Conflicto con %1$s</string>
     <string name="mod_issue_version">Versión %1$s incompatible</string>
     <string name="mod_issue_platform">No disponible en Android</string>
+    <string name="appname_title">Nombre de la app</string>
+    <string name="appname_sub">Vacío = usar el appName del mod</string>
+    <string name="appname_hint">Nombre personalizado</string>
+    <string name="target_title">App a parchear</string>
+    <string name="target_auto">Automática</string>
+    <string name="target_manual">Manual</string>
+    <string name="target_pick">Elegir app</string>
+    <string name="target_chosen">%1$s (%2$s)</string>
+    <string name="target_search">Buscar</string>
 </resources>

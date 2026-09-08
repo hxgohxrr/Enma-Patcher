@@ -262,7 +262,7 @@ class EnmaPatcherEngine(private val context: Context) {
             patchedUnsigned = apkPatcher.applyFileReplacements(
                 targetApk!!,
                 patchMap,
-                appName = mergedConfig.appName?.takeIf { it.isNotBlank() },
+                appName = settings.effectiveAppName(mergedConfig.appName),
                 currentLabel = mergedConfig.currentLabel?.takeIf { it.isNotBlank() } ?: currentLabel,
                 mergeApks = splitApks,
                 bypassZip = bypassFile,

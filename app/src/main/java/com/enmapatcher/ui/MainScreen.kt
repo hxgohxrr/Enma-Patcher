@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
@@ -112,8 +114,13 @@ fun MainScreen(
                 )
             }
 
+            TargetCard(
+                settings = settings,
+                viewModel = viewModel,
+            )
+
             InstalledStatusCard(
-                packageName = settings.targetPackage,
+                packageName = settings.effectivePackage(),
                 installed = appInstalled,
             )
 
@@ -158,7 +165,7 @@ fun MainScreen(
 
             if (!appInstalled) {
                 Text(
-                    text = stringResource(R.string.install_hint, config?.appName ?: settings.targetPackage),
+                    text = stringResource(R.string.install_hint, config?.appName ?: settings.effectivePackage()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -181,6 +188,143 @@ fun MainScreen(
     }
 }
 
+
+@Composable
+private fun TargetCard(
+    settings: AppSettings,
+    viewModel: MainViewModel,
+) {
+    var showPicker by remember { mutableStateOf(false) }
+    val manual = settings.targetMode == "manual"
+    if (showPicker) {
+        TargetPickerDialog(
+            viewModel = viewModel,
+            onDismiss = { showPicker = false },
+            onPick = {
+                viewModel.setManualPackage(it)
+                showPicker = false
+            },
+        )
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.target_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = !manual,
+                    onClick = { viewModel.setTargetMode("auto") },
+                    label = { Text(stringResource(R.string.target_auto)) },
+                )
+                FilterChip(
+                    selected = manual,
+                    onClick = { viewModel.setTargetMode("manual") },
+                    label = { Text(stringResource(R.string.target_manual)) },
+                )
+            }
+            if (manual) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = settings.manualPackage.ifBlank { settings.effectivePackage() },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                    TextButton(onClick = { showPicker = true }) {
+                        Text(stringResource(R.string.target_pick))
+                    }
+                }
+            } else {
+                Text(
+                    text = settings.targetPackage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TargetPickerDialog(
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    val apps by viewModel.installedApps.collectAsState()
+    var query by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { viewModel.refreshInstalledApps() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.target_pick)) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text(stringResource(R.string.target_search)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                val filtered = apps.filter {
+                    query.isBlank() ||
+                        it.label.contains(query, ignoreCase = true) ||
+                        it.packageName.contains(query, ignoreCase = true)
+                }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    items(filtered, key = { it.packageName }) { app ->
+                        TextButton(
+                            onClick = { onPick(app.packageName) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = app.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = app.packageName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
+}
 
 @Composable
 private fun InstalledStatusCard(packageName: String, installed: Boolean) {
