@@ -9,7 +9,6 @@ app/build/
 .externalNativeBuild
 .cxx
 local.properties
-app/src/main/res/mipmap*/
 keystore.jks
 *.jks
 *.p12
