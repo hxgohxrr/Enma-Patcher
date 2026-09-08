@@ -167,4 +167,5 @@
     <string name="target_pick">アプリを選択</string>
     <string name="target_chosen">%1$s (%2$s)</string>
     <string name="target_search">検索</string>
+    <string name="saves_grant_storage">ファイルへのアクセスを許可</string>
 </resources>

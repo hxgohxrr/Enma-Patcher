@@ -471,6 +471,8 @@ fun SettingsScreen(
                             mods = currentMods,
                             policyUrl = policyUrl.trim(),
                             appNameOverride = appNameOverride.trim(),
+                            targetMode = viewModel.settings.value.targetMode,
+                            manualPackage = viewModel.settings.value.manualPackage,
                         )
                     )
                     onBack()

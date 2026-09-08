@@ -167,4 +167,5 @@
     <string name="target_pick">Choose app</string>
     <string name="target_chosen">%1$s (%2$s)</string>
     <string name="target_search">Search</string>
+    <string name="saves_grant_storage">Allow file access</string>
 </resources>
