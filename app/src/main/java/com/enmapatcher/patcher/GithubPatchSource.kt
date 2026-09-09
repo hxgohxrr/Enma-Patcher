@@ -152,6 +152,18 @@ class GithubPatchSource(private val settings: AppSettings) {
         branch: String,
         onProgress: ((done: Int, total: Int, path: String) -> Unit)?
     ): Pair<EnmaCfg, Map<String, ByteArray>> = withContext(Dispatchers.IO) {
+        val blobs = runCatching { listRepoBlobs(owner, repo, branch) }.getOrNull()
+        val total = blobs?.values?.sum() ?: Long.MAX_VALUE
+        if (blobs != null && total <= ZIPBALL_MAX_BYTES) {
+            val zipped = runCatching { fetchPatchesByZip(owner, repo, branch) }.getOrNull()
+            if (zipped != null && !hasLfsPointers(zipped.second)) {
+                try {
+                    onProgress?.invoke(zipped.second.size, zipped.second.size, "")
+                } catch (_: Exception) {
+                }
+                return@withContext zipped
+            }
+        }
         val rawResult = runCatching { fetchPatchesByRaw(owner, repo, branch, onProgress) }
         if (rawResult.isSuccess) return@withContext rawResult.getOrThrow()
         try {
@@ -165,6 +177,7 @@ class GithubPatchSource(private val settings: AppSettings) {
         private const val BUFFER = 65536
         private const val MAX_RAW_FILE_BYTES = 512L * 1024L * 1024L
         private const val MAX_ZIP_ENTRY_BYTES = 1L * 1024L * 1024L * 1024L
+        private const val ZIPBALL_MAX_BYTES = 150L * 1024L * 1024L
 
         val client: OkHttpClient =
             OkHttpClient.Builder()
@@ -212,7 +225,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             }
         }
 
-        fun listRepoFiles(owner: String, repo: String, branch: String): List<String> {
+        fun listRepoBlobs(owner: String, repo: String, branch: String): Map<String, Long> {
             ensureRepoAllowed(owner, repo)
             val url = "https://api.github.com/repos/$owner/$repo/git/trees/$branch?recursive=1"
             client.newCall(
@@ -224,17 +237,32 @@ class GithubPatchSource(private val settings: AppSettings) {
                 val body = response.body?.string().orEmpty()
                 val root = JSONObject(body)
                 if (root.optBoolean("truncated", false)) throw IOException("TreeTruncated")
-                val tree = root.optJSONArray("tree") ?: return emptyList()
-                val out = ArrayList<String>(tree.length())
+                val tree = root.optJSONArray("tree") ?: return emptyMap()
+                val out = LinkedHashMap<String, Long>(tree.length())
                 for (i in 0 until tree.length()) {
                     val node = tree.optJSONObject(i) ?: continue
                     if (node.optString("type") != "blob") continue
                     val path = node.optString("path").orEmpty()
                     if (path.isBlank()) continue
-                    out += path
+                    out[path] = node.optLong("size", 0L)
                 }
                 return out
             }
+        }
+
+        fun listRepoFiles(owner: String, repo: String, branch: String): List<String> {
+            return listRepoBlobs(owner, repo, branch).keys.toList()
+        }
+
+        private fun hasLfsPointers(files: Map<String, ByteArray>): Boolean {
+            for ((_, bytes) in files) {
+                if (bytes.size in 100..2048) {
+                    if (bytes.toString(Charsets.UTF_8).startsWith("version https://git-lfs.github.com/spec/v1")) {
+                        return true
+                    }
+                }
+            }
+            return false
         }
 
         fun downloadRawBytes(owner: String, repo: String, branch: String, path: String): ByteArray {
@@ -272,7 +300,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             val patches = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
             val errors = java.util.concurrent.ConcurrentLinkedQueue<String>()
             val done = java.util.concurrent.atomic.AtomicInteger(0)
-            val semaphore = Semaphore(4)
+            val semaphore = Semaphore(8)
             val jobs = targets.map { path ->
                 async {
                     semaphore.withPermit {
