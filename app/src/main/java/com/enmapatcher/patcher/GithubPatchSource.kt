@@ -183,8 +183,12 @@ class GithubPatchSource(private val settings: AppSettings) {
             }
         }
 
-        fun rawUrlFor(owner: String, repo: String, branch: String, path: String): String =
-            "https://raw.githubusercontent.com/$owner/$repo/$branch/$path"
+        fun rawUrlFor(owner: String, repo: String, branch: String, path: String): String {
+            val encoded = path.split("/").joinToString("/") { segment ->
+                java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+            }
+            return "https://raw.githubusercontent.com/$owner/$repo/$branch/$encoded"
+        }
 
         fun fetchRawText(url: String): String? {
             return try {
@@ -296,6 +300,23 @@ class GithubPatchSource(private val settings: AppSettings) {
             }
             jobs.awaitAll()
             if (patches.isEmpty() && targets.isNotEmpty()) throw IOException("RawDownloadEmpty")
+            if (errors.isNotEmpty()) {
+                val retryLeft = errors.toList()
+                errors.clear()
+                val retryTotal = targets.size + retryLeft.size
+                for (path in retryLeft) {
+                    try {
+                        patches[path] = downloadRawBytes(owner, repo, branch, path)
+                    } catch (_: Exception) {
+                        errors += path
+                    }
+                    val current = done.incrementAndGet()
+                    try {
+                        onProgress?.invoke(current, retryTotal, path)
+                    } catch (_: Exception) {
+                    }
+                }
+            }
             if (errors.isNotEmpty()) {
                 throw IOException("RawDownloadFailed:" + errors.take(5).joinToString(","))
             }
