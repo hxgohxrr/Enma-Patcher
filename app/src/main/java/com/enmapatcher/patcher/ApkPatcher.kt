@@ -8,6 +8,7 @@ import java.io.OutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.Charset
 import java.util.zip.CRC32
 import java.util.zip.Deflater
 import java.util.zip.Inflater
@@ -164,6 +165,8 @@ class ApkPatcher(private val workDir: File) {
         reader.copyRaw(entry, out)
         central += FastCentralEntry(
             name = outName,
+            nameBytes = if (outName == entry.name) entry.nameBytes else outName.toByteArray(Charsets.UTF_8),
+            flags = entry.flags,
             method = entry.method,
             crc = entry.crc,
             compSize = entry.compSize,
@@ -223,6 +226,8 @@ class ApkPatcher(private val workDir: File) {
         writeDataDescriptor(out, crc.value, compSize, bytes.size.toLong())
         central += FastCentralEntry(
             name = name,
+            nameBytes = nameBytes,
+            flags = flags,
             method = ZipEntry.DEFLATED,
             crc = crc.value,
             compSize = compSize,
@@ -252,6 +257,8 @@ class ApkPatcher(private val workDir: File) {
         out.write(bytes)
         central += FastCentralEntry(
             name = name,
+            nameBytes = name.toByteArray(Charsets.UTF_8),
+            flags = 0,
             method = ZipEntry.STORED,
             crc = crc,
             compSize = bytes.size.toLong(),
@@ -310,11 +317,8 @@ class ApkPatcher(private val workDir: File) {
     ) {
         val cdStart = (out as CountingOutputStream).count
         for (e in central) {
-            val nameBytes = e.name.toByteArray(Charsets.UTF_8)
-            val utf8 = nameBytes.size != e.name.length || e.name.any { it.code > 127 }
-            var flags = 0
-            if (e.hasDescriptor) flags = flags or 0x08
-            if (utf8) flags = flags or 0x0800
+            val nameBytes = e.nameBytes
+            val flags = e.flags
             val buf = ByteBuffer.allocate(46).order(ByteOrder.LITTLE_ENDIAN)
             buf.putInt(0x02014b50)
             buf.putShort(20)
@@ -367,6 +371,8 @@ class ApkPatcher(private val workDir: File) {
 
     private data class FastCentralEntry(
         val name: String,
+        val nameBytes: ByteArray,
+        val flags: Int,
         val method: Int,
         val crc: Long,
         val compSize: Long,
@@ -382,6 +388,8 @@ class ApkPatcher(private val workDir: File) {
     private class FastZipReader(val file: File) {
         data class ZipEntryInfo(
             val name: String,
+            val nameBytes: ByteArray,
+            val flags: Int,
             val method: Int,
             val crc: Long,
             val compSize: Long,
@@ -467,10 +475,12 @@ class ApkPatcher(private val workDir: File) {
                 val name = if (flags and 0x0800 != 0) {
                     nameBytes.toString(Charsets.UTF_8)
                 } else {
-                    nameBytes.toString(Charsets.ISO_8859_1)
+                    nameBytes.toString(Charset.forName("Cp437"))
                 }
                 list += ZipEntryInfo(
                     name = name.replace('\\', '/'),
+                    nameBytes = nameBytes,
+                    flags = flags,
                     method = method,
                     crc = crc,
                     compSize = compSize,
