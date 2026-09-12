@@ -168,4 +168,22 @@
     <string name="target_chosen">%1$s (%2$s)</string>
     <string name="target_search">Buscar</string>
     <string name="saves_grant_storage">Permitir acesso a arquivos</string>
+    <string name="crash_title">O app fechou</string>
+    <string name="crash_sub">Um registro de falha foi salvo. Compartilhe para diagnosticar.</string>
+    <string name="crash_share">Compartilhar registro</string>
+    <string name="crash_found">Registro pendente: %1$s</string>
+    <string name="github_token_label">Token do GitHub (opcional)</string>
+    <string name="github_token_sub">Evita limites de download do GitHub. Usado só para baixar.</string>
+    <string name="mod_warn_patches">Usa patches IPS</string>
+    <string name="mod_warn_submods">Traz sub-mods</string>
+    <string name="mod_warn_ignored">Ignorado (enmaignore)</string>
+    <string name="mod_origin_3ds">3DS</string>
+    <string name="mod_origin_switch">Switch</string>
+    <string name="warning_mods_title">⚠️ Aviso — Patches e sub-mods</string>
+    <string name="warning_mods_message">Este mod aplica patches IPS ou inclui mods vinculados. Podem modificar arquivos do jogo além do mod principal.
+
+Você confia na origem?
+
+Se não tiver certeza, CANCELE.</string>
+    <string name="warning_mods_hold">Segure para continuar</string>
 </resources>

@@ -180,6 +180,8 @@ class GithubPatchSource(private val settings: AppSettings) {
         private const val MAX_ZIP_ENTRY_BYTES = 1L * 1024L * 1024L * 1024L
         private const val ZIPBALL_MAX_BYTES = 150L * 1024L * 1024L
         private const val MAX_IN_FLIGHT_BYTES = 192L * 1024L * 1024L
+        private const val TREE_CACHE_MS = 10L * 60L * 1000L
+        private val treeCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Map<String, Long>>>()
 
         val client: OkHttpClient =
             OkHttpClient.Builder()
@@ -187,7 +189,22 @@ class GithubPatchSource(private val settings: AppSettings) {
                 .readTimeout(120, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .proxy(Proxy.NO_PROXY)
+                .addInterceptor { chain ->
+                    val token = authToken
+                    if (token.isNotBlank()) {
+                        chain.proceed(
+                            chain.request().newBuilder()
+                                .header("Authorization", "Bearer $token")
+                                .build()
+                        )
+                    } else {
+                        chain.proceed(chain.request())
+                    }
+                }
                 .build()
+
+        @Volatile
+        var authToken: String = ""
 
         private fun ensureRepoAllowed(owner: String, repo: String) {
             val target = (owner.trim() + "/" + repo.trim()).lowercase()
@@ -229,27 +246,43 @@ class GithubPatchSource(private val settings: AppSettings) {
 
         fun listRepoBlobs(owner: String, repo: String, branch: String): Map<String, Long> {
             ensureRepoAllowed(owner, repo)
-            val url = "https://api.github.com/repos/$owner/$repo/git/trees/$branch?recursive=1"
-            client.newCall(
-                Request.Builder().url(url)
-                    .header("Accept", "application/vnd.github+json")
-                    .build()
-            ).execute().use { response ->
-                if (!response.isSuccessful) throw IOException("TreeListFailed:${response.code}")
-                val body = response.body?.string().orEmpty()
-                val root = JSONObject(body)
-                if (root.optBoolean("truncated", false)) throw IOException("TreeTruncated")
-                val tree = root.optJSONArray("tree") ?: return emptyMap()
-                val out = LinkedHashMap<String, Long>(tree.length())
-                for (i in 0 until tree.length()) {
-                    val node = tree.optJSONObject(i) ?: continue
-                    if (node.optString("type") != "blob") continue
-                    val path = node.optString("path").orEmpty()
-                    if (path.isBlank()) continue
-                    out[path] = node.optLong("size", 0L)
-                }
-                return out
+            val key = owner.trim().lowercase() + "/" + repo.trim().lowercase() + "@" + branch
+            treeCache[key]?.let { (stamp, cached) ->
+                if (System.currentTimeMillis() - stamp < TREE_CACHE_MS) return cached
             }
+            val url = "https://api.github.com/repos/$owner/$repo/git/trees/$branch?recursive=1"
+            var lastCode = 0
+            for (attempt in 1..3) {
+                client.newCall(
+                    Request.Builder().url(url)
+                        .header("Accept", "application/vnd.github+json")
+                        .build()
+                ).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string().orEmpty()
+                        val root = JSONObject(body)
+                        if (root.optBoolean("truncated", false)) throw IOException("TreeTruncated")
+                        val tree = root.optJSONArray("tree") ?: return emptyMap()
+                        val out = LinkedHashMap<String, Long>(tree.length())
+                        for (i in 0 until tree.length()) {
+                            val node = tree.optJSONObject(i) ?: continue
+                            if (node.optString("type") != "blob") continue
+                            val path = node.optString("path").orEmpty()
+                            if (path.isBlank()) continue
+                            out[path] = node.optLong("size", 0L)
+                        }
+                        treeCache[key] = System.currentTimeMillis() to out
+                        return out
+                    }
+                    lastCode = response.code
+                }
+                if ((lastCode == 403 || lastCode == 429 || lastCode >= 500) && attempt < 3) {
+                    Thread.sleep(2000L * attempt * attempt)
+                    continue
+                }
+                throw IOException("TreeListFailed:$lastCode")
+            }
+            throw IOException("TreeListFailed:$lastCode")
         }
 
         fun listRepoFiles(owner: String, repo: String, branch: String): List<String> {

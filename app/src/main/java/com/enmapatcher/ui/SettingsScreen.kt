@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -37,7 +38,9 @@ import com.enmapatcher.MainViewModel
 import com.enmapatcher.R
 import com.enmapatcher.model.AppSettings
 import com.enmapatcher.model.ModEntry
+import com.enmapatcher.model.ModFlags
 import com.enmapatcher.model.ModKind
+import com.enmapatcher.model.ModOrigin
 import com.enmapatcher.model.peerConflict
 import com.enmapatcher.model.supportsAndroid
 import com.enmapatcher.model.versionBlocked
@@ -58,6 +61,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val mods = settings.effectiveMods()
     val modConfigs by viewModel.modConfigs.collectAsState()
+    val modFlags by viewModel.modFlags.collectAsState()
     val gameVersion by viewModel.gameVersion.collectAsState()
     val config by viewModel.config.collectAsState()
     LaunchedEffect(Unit) { viewModel.refreshModConfigs() }
@@ -69,6 +73,7 @@ fun SettingsScreen(
     var drmbCopying by remember { mutableStateOf(false) }
     var drmbError by remember { mutableStateOf<String?>(null) }
     var policyUrl by remember(settings.policyUrl) { mutableStateOf(settings.policyUrl) }
+    var githubToken by remember(settings.githubToken) { mutableStateOf(settings.githubToken) }
     var appNameOverride by remember(settings.appNameOverride) { mutableStateOf(settings.appNameOverride) }
     var showAddRepo by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -254,6 +259,7 @@ fun SettingsScreen(
                         allMods = mods,
                         configs = modConfigs,
                         gameVersion = gameVersion,
+                        flags = modFlags[mod.id],
                         onMoveUp = { viewModel.moveMod(mod.id, -1) },
                         onMoveDown = { viewModel.moveMod(mod.id, 1) },
                         onDelete = { viewModel.removeMod(mod.id) },
@@ -309,6 +315,19 @@ fun SettingsScreen(
                 onValueChange = { policyUrl = it },
                 label = { Text(stringResource(R.string.policy_url_label)) },
                 singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(R.string.github_token_sub),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = githubToken,
+                onValueChange = { githubToken = it },
+                label = { Text(stringResource(R.string.github_token_label)) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
             )
             HorizontalDivider()
@@ -470,6 +489,7 @@ fun SettingsScreen(
                             localPatchZipUri = viewModel.settings.value.localPatchZipUri,
                             mods = currentMods,
                             policyUrl = policyUrl.trim(),
+                            githubToken = githubToken.trim(),
                             appNameOverride = appNameOverride.trim(),
                             targetMode = viewModel.settings.value.targetMode,
                             manualPackage = viewModel.settings.value.manualPackage,
@@ -494,6 +514,7 @@ private fun ModCard(
     allMods: List<ModEntry>,
     configs: Map<String, com.enmapatcher.model.EnmaCfg>,
     gameVersion: String?,
+    flags: ModFlags?,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onDelete: () -> Unit,
@@ -558,6 +579,25 @@ private fun ModCard(
                 if (conflict == null && blockedVer == null && androidOk) {
                     AssistChip(onClick = {}, label = { Text(stringResource(R.string.mod_status_ok)) })
                 }
+                if (flags?.origin == ModOrigin.MOD_3DS) {
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.mod_origin_3ds)) })
+                }
+                if (flags?.origin == ModOrigin.MOD_SWITCH) {
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.mod_origin_switch)) })
+                }
+                if (flags?.hasPatches == true) {
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.mod_warn_patches)) })
+                }
+                if (flags?.hasSubMods == true) {
+                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.mod_warn_submods)) })
+                }
+            }
+            if (flags?.ignored == true) {
+                Text(
+                    text = stringResource(R.string.mod_warn_ignored),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             if (!androidOk) {
                 Text(

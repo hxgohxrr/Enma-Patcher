@@ -14,11 +14,15 @@ import com.enmapatcher.BuildConfig
 import com.enmapatcher.model.AppSettings
 import com.enmapatcher.model.EnmaCfg
 import com.enmapatcher.model.ModEntry
+import com.enmapatcher.model.ModFlags
 import com.enmapatcher.model.ModKind
+import com.enmapatcher.model.detectOrigin
+import com.enmapatcher.model.isIgnoredFile
 import com.enmapatcher.model.PatchState
 import com.enmapatcher.model.PatchStep
 import com.enmapatcher.model.PatchStepStatus
 import com.enmapatcher.patcher.ApkBundleProcessor
+import com.enmapatcher.patcher.CrashLogs
 import com.enmapatcher.patcher.EnmaPatcherEngine
 import com.enmapatcher.patcher.GithubPatchSource
 import com.enmapatcher.patcher.RootShell
@@ -84,6 +88,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _updateAvailable = MutableStateFlow<String?>(null)
     val updateAvailable: StateFlow<String?> = _updateAvailable.asStateFlow()
 
+    private val _pendingCrashLog = MutableStateFlow<File?>(null)
+    val pendingCrashLog: StateFlow<File?> = _pendingCrashLog.asStateFlow()
+
+    fun loadPendingCrashLog() {
+        _pendingCrashLog.value = CrashLogs.pending(context)
+    }
+
+    fun dismissPendingCrashLog() {
+        runCatching { _pendingCrashLog.value?.delete() }
+        _pendingCrashLog.value = null
+    }
+
     init {
         viewModelScope.launch {
             val prefs = context.dataStore.data.first()
@@ -92,6 +108,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ?.let { saved ->
                         val migrated = saved.withMigratedMods()
                         _settings.value = migrated
+                        GithubPatchSource.authToken = migrated.githubToken
                         applyLocale(migrated.language)
                         if (migrated != saved) persistSettings(migrated)
                     }
@@ -100,6 +117,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             fetchRemoteConfig()
             refreshModConfigs()
             checkExistingBackup()
+            loadPendingCrashLog()
         }
     }
 
@@ -188,6 +206,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun updateSettings(newSettings: AppSettings) {
         val migrated = newSettings.withMigratedMods()
         _settings.value = migrated
+        GithubPatchSource.authToken = migrated.githubToken
         checkInstalled()
         fetchRemoteConfig()
         refreshModConfigs()
@@ -264,9 +283,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _modConfigs = MutableStateFlow<Map<String, EnmaCfg>>(emptyMap())
     val modConfigs: StateFlow<Map<String, EnmaCfg>> = _modConfigs.asStateFlow()
 
+    private val _modFlags = MutableStateFlow<Map<String, ModFlags>>(emptyMap())
+    val modFlags: StateFlow<Map<String, ModFlags>> = _modFlags.asStateFlow()
+
     fun refreshModConfigs() {
         viewModelScope.launch(Dispatchers.IO) {
             val map = mutableMapOf<String, EnmaCfg>()
+            val flags = mutableMapOf<String, ModFlags>()
             for (mod in _settings.value.effectiveMods()) {
                 val cfg = runCatching {
                     if (mod.kind == ModKind.GITHUB && "/" in mod.repo) {
@@ -284,8 +307,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }.getOrNull()
                 if (cfg != null) map[mod.id] = cfg
+                val names = runCatching {
+                    if (mod.kind == ModKind.GITHUB && "/" in mod.repo) {
+                        GithubPatchSource.listRepoFiles(
+                            mod.owner,
+                            mod.repoName,
+                            mod.branch.ifBlank { "main" },
+                        )
+                    } else if (mod.kind == ModKind.ZIP && mod.zipUri.isNotBlank()) {
+                        context.contentResolver.openInputStream(Uri.parse(mod.zipUri))?.use { stream ->
+                            GithubPatchSource.listLocalZipEntries(stream, 3000)
+                        } ?: emptyList()
+                    } else {
+                        emptyList()
+                    }
+                }.getOrDefault(emptyList())
+                flags[mod.id] = ModFlags(
+                    origin = detectOrigin(names),
+                    hasPatches = names.any { it.startsWith("patches/") && it.lowercase().endsWith(".ips") },
+                    hasSubMods = names.any { it == "mods/mods.json" },
+                    ignored = names.any { isIgnoredFile(it) },
+                )
             }
             _modConfigs.value = map
+            _modFlags.value = flags
             _gameVersion.value = runCatching {
                 val pm = context.packageManager
                 val pkg = _settings.value.effectivePackage()
@@ -360,9 +405,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val steps = mutableListOf<PatchStep>()
             _patchState.value = PatchState.Patching(steps.toList())
+            GithubPatchSource.authToken = _settings.value.githubToken
             try {
                 val engine = EnmaPatcherEngine(context)
                 val result = engine.patch(packageName, _settings.value) { step ->
+                    CrashLogs.breadcrumb(step.name + ":" + step.status)
                     val idx = steps.indexOfFirst { it.name == step.name }
                     if (idx >= 0) steps[idx] = step else steps += step
                     _patchState.value = PatchState.Patching(
@@ -374,7 +421,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _patchState.value = PatchState.Success(result.outputApk.absolutePath)
                 _config.value = result.config
             } catch (e: OutOfMemoryError) {
+                val summary = settingsSummary()
+                runCatching { CrashLogs.writePatchLog(context, "OutOfMemoryError: ${e.message}", summary) }
                 _patchState.value = PatchState.Error("OutOfMemoryError: ${e.message}", e)
+                loadPendingCrashLog()
             } catch (e: Exception) {
                 val msg = buildString {
                     var ex: Throwable? = e
@@ -386,8 +436,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 _patchState.value = PatchState.Error(msg, e)
+                runCatching {
+                    CrashLogs.writePatchLog(context, msg, settingsSummary())
+                }
+                loadPendingCrashLog()
             }
         }
+    }
+
+    private fun settingsSummary(): String {
+        val s = _settings.value
+        val mods = s.effectiveMods().filter { it.enabled }.joinToString(",") { it.displayName }
+        return "pkg=" + s.effectivePackage() + " mods=[" + mods + "]"
     }
 
     fun updateDrmbUri(path: String) {

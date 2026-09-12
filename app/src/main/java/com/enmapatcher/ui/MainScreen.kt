@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.enmapatcher.MainViewModel
 import com.enmapatcher.R
 import com.enmapatcher.model.AppSettings
@@ -47,15 +48,43 @@ fun MainScreen(
 
     var showSmaliWarning by remember { mutableStateOf(false) }
     var showDrmWarning by remember { mutableStateOf(false) }
+    var showModsWarning by remember { mutableStateOf(false) }
     var pendingPatch by remember { mutableStateOf(false) }
     var updateDismissed by remember { mutableStateOf(false) }
 
+    val modFlags by viewModel.modFlags.collectAsState()
+    val needsModsWarning = settings.effectiveMods().any { mod ->
+        mod.enabled && (modFlags[mod.id]?.hasPatches == true || modFlags[mod.id]?.hasSubMods == true)
+    }
 
-    if (pendingPatch && !showSmaliWarning && !showDrmWarning) {
+    fun continueWarnings() {
+        val warnings = viewModel.getSecurityWarnings()
+        when {
+            warnings.showSmaliWarning -> showSmaliWarning = true
+            warnings.showDrmWarning -> showDrmWarning = true
+            else -> { }
+        }
+    }
+
+
+    if (pendingPatch && !showSmaliWarning && !showDrmWarning && !showModsWarning) {
         LaunchedEffect(Unit) {
             pendingPatch = false
             onNavigateToPatch()
         }
+    }
+
+    if (showModsWarning) {
+        SecurityWarningDialog(
+            title = stringResource(R.string.warning_mods_title),
+            message = stringResource(R.string.warning_mods_message),
+            holdButtonText = stringResource(R.string.warning_mods_hold),
+            onConfirm = {
+                showModsWarning = false
+                continueWarnings()
+            },
+            onDismiss = { showModsWarning = false; pendingPatch = false },
+        )
     }
 
     if (showSmaliWarning) {
@@ -106,6 +135,15 @@ fun MainScreen(
         ) {
             AppInfoCard(config = config, settings = settings)
 
+            val pendingCrash by viewModel.pendingCrashLog.collectAsState()
+            if (pendingCrash != null) {
+                CrashBanner(
+                    fileName = pendingCrash!!.name,
+                    onShare = { shareLogFile(context, pendingCrash!!) },
+                    onDismiss = { viewModel.dismissPendingCrashLog() },
+                )
+            }
+
             if (updateAvailable != null && !updateDismissed) {
                 UpdateBanner(
                     version = updateAvailable!!,
@@ -126,13 +164,9 @@ fun MainScreen(
 
             Button(
                 onClick = {
-                    val warnings = viewModel.getSecurityWarnings()
                     pendingPatch = true
-                    when {
-                        warnings.showSmaliWarning -> showSmaliWarning = true
-                        warnings.showDrmWarning -> showDrmWarning = true
-                        else -> {  }
-                    }
+                    if (needsModsWarning) showModsWarning = true
+                    else continueWarnings()
                 },
                 enabled = appInstalled,
                 modifier = Modifier
@@ -324,6 +358,56 @@ private fun TargetPickerDialog(
             }
         },
     )
+}
+
+@Composable
+private fun CrashBanner(
+    fileName: String,
+    onShare: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = stringResource(R.string.crash_found, fileName),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onShare) {
+                    Text(stringResource(R.string.crash_share))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        stringResource(R.string.cancel),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun shareLogFile(context: Context, file: java.io.File) {
+    runCatching {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        context.startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+                context.getString(R.string.crash_share),
+            )
+        )
+    }
 }
 
 @Composable

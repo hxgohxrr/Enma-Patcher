@@ -11,6 +11,8 @@ import com.enmapatcher.model.ModKind
 import com.enmapatcher.model.ModPolicy
 import com.enmapatcher.model.PatchStep
 import com.enmapatcher.model.PatchStepStatus
+import com.enmapatcher.model.isIgnoredFile
+import com.enmapatcher.model.parseSubMods
 import com.enmapatcher.model.peerConflict
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -18,6 +20,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 class EnmaPatcherEngine(private val context: Context) {
@@ -85,12 +88,22 @@ class EnmaPatcherEngine(private val context: Context) {
             Triple(baseApk, splits, label)
         }
         var mergedConfig = EnmaCfg()
-        val perModPatches = ArrayList<Triple<ModEntry, EnmaCfg, Map<String, ByteArray>>>(mods.size)
+        val perModPatches = ArrayList<Triple<ModEntry, EnmaCfg, Map<String, ByteArray>>>()
         val modTitles = HashMap<String, String>()
-        val perModCounts = LinkedHashMap<String, Int>()
-        for ((index, mod) in mods.withIndex()) {
+        val modDepths = HashMap<String, Int>()
+        val seenRepos = HashSet<String>()
+        for (mod in mods) {
+            modDepths[mod.id] = 0
+            if (mod.kind == ModKind.GITHUB && mod.repo.isNotBlank()) {
+                seenRepos += mod.repo.trim().lowercase() + "@" + mod.branch.trim().lowercase()
+            }
+        }
+        val queue = mods.toMutableList()
+        var queueIndex = 0
+        while (queueIndex < queue.size) {
+            val mod = queue[queueIndex]
             val modLabel = modLabel(mod)
-            val title = context.getString(R.string.step_download_mod, index + 1, mods.size, modLabel)
+            val title = context.getString(R.string.step_download_mod, queueIndex + 1, queue.size, modLabel)
             onStep(PatchStep(title, context.getString(R.string.step_download_mod_running), PatchStepStatus.RUNNING))
             try {
                 val (cfg, files) = withContext(Dispatchers.IO) {
@@ -109,11 +122,28 @@ class EnmaPatcherEngine(private val context: Context) {
                 ) {
                     throw IOException("EmptyMod:${modLabel(mod)}")
                 }
+                if (files.keys.any { isIgnoredFile(it) }) {
+                    throw IOException("ModIgnored:${modLabel(mod)}")
+                }
                 policyChecker.checkPaths(policy, files.keys)
                 policyChecker.checkContents(policy, files)
                 perModPatches += Triple(mod, cfg, files)
                 modTitles[mod.id] = title
-                perModCounts[mod.id] = files.size
+                val depth = modDepths[mod.id] ?: 0
+                if (depth < 1) {
+                    val subBytes = files.entries.firstOrNull { it.key == "mods/mods.json" }?.value
+                    if (subBytes != null) {
+                        var insertAt = queueIndex + 1
+                        for (sub in parseSubMods(subBytes)) {
+                            val key = sub.repo.trim().lowercase() + "@" + sub.branch.trim().lowercase()
+                            if (key in seenRepos) continue
+                            seenRepos += key
+                            queue.add(insertAt, sub)
+                            modDepths[sub.id] = depth + 1
+                            insertAt++
+                        }
+                    }
+                }
                 if (mergedConfig.appName.isNullOrBlank() && !cfg.appName.isNullOrBlank()) {
                     mergedConfig = mergedConfig.copy(appName = cfg.appName)
                 }
@@ -132,6 +162,7 @@ class EnmaPatcherEngine(private val context: Context) {
                 onStep(PatchStep(title, "${e.javaClass.simpleName}: ${e.message}", PatchStepStatus.ERROR))
                 throw e
             }
+            queueIndex++
         }
         var targetApk: File? = null
         var splitApks: List<File> = emptyList()
@@ -164,7 +195,11 @@ class EnmaPatcherEngine(private val context: Context) {
             if (other != null) throw IOException("ModConflict:${modLabel(mod)}:$other")
         }
         var patchMap = LinkedHashMap<String, ByteArray>()
-        for ((mod, cfg, files) in perModPatches.asReversed()) {
+        val provider = HashMap<String, Int>()
+        for ((pi, triple) in perModPatches.withIndex()) {
+            val mod = triple.first
+            val cfg = triple.second
+            val files = triple.third
             if (!cfg.effectiveAndroid()) {
                 onStep(
                     PatchStep(
@@ -176,7 +211,31 @@ class EnmaPatcherEngine(private val context: Context) {
                 continue
             }
             for ((path, bytes) in files) {
-                if (cfg.allows(path)) patchMap[path] = bytes
+                if (isMetaFile(path)) continue
+                if (!cfg.allows(path)) continue
+                if (path !in patchMap) {
+                    patchMap[path] = bytes
+                    provider[path] = pi
+                }
+            }
+        }
+        ZipFile(targetApk!!).use { baseZip ->
+            for ((pi, triple) in perModPatches.withIndex().reversed()) {
+                val cfg = triple.second
+                if (!cfg.effectiveAndroid()) continue
+                for ((key, ipsBytes) in triple.third) {
+                    if (!IpsPatcher.isIpsEntry(key)) continue
+                    val target = IpsPatcher.targetFor(key) ?: continue
+                    val owner = provider[target]
+                    if (owner != null && owner < pi) continue
+                    val baseBytes = patchMap[target] ?: runCatching {
+                        baseZip.getEntry(target)?.let { baseZip.getInputStream(it).readBytes() }
+                    }.getOrNull() ?: continue
+                    runCatching {
+                        patchMap[target] = IpsPatcher.apply(baseBytes, ipsBytes)
+                        provider[target] = pi
+                    }
+                }
             }
         }
         var bypassFile: File? = null
@@ -292,6 +351,12 @@ class EnmaPatcherEngine(private val context: Context) {
         }
         cacheRoot.deleteRecursively()
         Result(signedApk, mergedConfig, backupApk)
+    }
+
+    private fun isMetaFile(path: String): Boolean {
+        if (path == "enmapatcher.cfg.json") return true
+        if (path.startsWith("patches/") || path.startsWith("mods/")) return true
+        return isIgnoredFile(path)
     }
 
     private fun modLabel(mod: ModEntry): String {

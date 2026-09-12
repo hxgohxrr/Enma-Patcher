@@ -18,7 +18,8 @@ data class AppSettings(
     val policyUrl: String = ModPolicy.DEFAULT_URL,
     val targetMode: String = "auto",
     val manualPackage: String = "",
-    val appNameOverride: String = ""
+    val appNameOverride: String = "",
+    val githubToken: String = ""
 ) {
     val githubOwner: String get() = githubRepo.substringBefore("/")
     val githubRepoName: String get() = githubRepo.substringAfter("/")
