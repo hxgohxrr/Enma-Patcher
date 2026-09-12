@@ -373,6 +373,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (result.backupApk != null) _backupFile.value = result.backupApk
                 _patchState.value = PatchState.Success(result.outputApk.absolutePath)
                 _config.value = result.config
+            } catch (e: OutOfMemoryError) {
+                _patchState.value = PatchState.Error("OutOfMemoryError: ${e.message}", e)
             } catch (e: Exception) {
                 val msg = buildString {
                     var ex: Throwable? = e

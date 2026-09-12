@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -178,6 +179,7 @@ class GithubPatchSource(private val settings: AppSettings) {
         private const val MAX_RAW_FILE_BYTES = 512L * 1024L * 1024L
         private const val MAX_ZIP_ENTRY_BYTES = 1L * 1024L * 1024L * 1024L
         private const val ZIPBALL_MAX_BYTES = 150L * 1024L * 1024L
+        private const val MAX_IN_FLIGHT_BYTES = 192L * 1024L * 1024L
 
         val client: OkHttpClient =
             OkHttpClient.Builder()
@@ -265,8 +267,41 @@ class GithubPatchSource(private val settings: AppSettings) {
             return false
         }
 
-        fun downloadRawBytes(owner: String, repo: String, branch: String, path: String): ByteArray {
-            ensureRepoAllowed(owner, repo)
+        private fun errorCode(e: IOException): String? =
+            Regex(":(\\d{3}):").find(e.message.orEmpty())?.groupValues?.getOrNull(1)
+
+        private fun isRetryable(e: IOException): Boolean {
+            if ((e.message ?: "").startsWith("RawTooLarge")) return false
+            val code = errorCode(e)?.toIntOrNull() ?: return true
+            return code == 408 || code == 425 || code == 429 || code >= 500
+        }
+
+        private fun shortError(path: String, e: IOException?): String {
+            val code = e?.let { errorCode(it) }
+            return if (code != null) "$path($code)" else path
+        }
+
+        suspend fun downloadWithRetry(
+            owner: String,
+            repo: String,
+            branch: String,
+            path: String,
+            attempts: Int = 4,
+        ): ByteArray {
+            var last: IOException? = null
+            for (attempt in 1..attempts) {
+                try {
+                    return downloadRawBytes(owner, repo, branch, path)
+                } catch (e: IOException) {
+                    last = e
+                    if (!isRetryable(e) || attempt == attempts) break
+                    delay(1000L * attempt * attempt + kotlin.random.Random.nextLong(0, 500))
+                }
+            }
+            throw last ?: IOException("RawDownloadFailed:$path")
+        }
+
+        fun downloadRawBytes(owner: String, repo: String, branch: String, path: String): ByteArray {            ensureRepoAllowed(owner, repo)
             client.newCall(Request.Builder().url(rawUrlFor(owner, repo, branch, path)).build())
                 .execute().use { response ->
                     if (!response.isSuccessful) throw IOException("RawDownloadFailed:${response.code}:$path")
@@ -295,28 +330,34 @@ class GithubPatchSource(private val settings: AppSettings) {
                 fetchRemoteConfigOrNull(owner, repo, branch)?.let { config = it }
             } catch (_: Exception) {
             }
-            val files = listRepoFiles(owner, repo, branch)
-            val targets = files.filter { it != "enmapatcher.cfg.json" && config.allows(it) }
+            val blobs = listRepoBlobs(owner, repo, branch)
+            val targets = blobs.keys.filter { it != "enmapatcher.cfg.json" && config.allows(it) }
             val patches = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
             val errors = java.util.concurrent.ConcurrentLinkedQueue<String>()
             val done = java.util.concurrent.atomic.AtomicInteger(0)
+            val inFlight = java.util.concurrent.atomic.AtomicLong(0)
+            val active = java.util.concurrent.atomic.AtomicInteger(0)
             val semaphore = Semaphore(8)
             val jobs = targets.map { path ->
                 async {
                     semaphore.withPermit {
-                        var attempt = 0
-                        while (true) {
+                        val expected = blobs[path] ?: 0L
+                        while (active.get() >= 2 && inFlight.get() + expected > MAX_IN_FLIGHT_BYTES) {
+                            delay(50)
+                        }
+                        active.incrementAndGet()
+                        inFlight.addAndGet(expected)
+                        try {
                             try {
-                                patches[path] = downloadRawBytes(owner, repo, branch, path)
-                                break
+                                val bytes = downloadWithRetry(owner, repo, branch, path)
+                                inFlight.addAndGet(bytes.size - expected)
+                                patches[path] = bytes
                             } catch (e: IOException) {
-                                if (e.message?.startsWith("RawTooLarge") == true) throw e
-                                attempt++
-                                if (attempt > 1) {
-                                    errors += path
-                                    break
-                                }
+                                inFlight.addAndGet(-expected)
+                                errors += shortError(path, e)
                             }
+                        } finally {
+                            active.decrementAndGet()
                         }
                         val current = done.incrementAndGet()
                         try {
@@ -331,12 +372,13 @@ class GithubPatchSource(private val settings: AppSettings) {
             if (errors.isNotEmpty()) {
                 val retryLeft = errors.toList()
                 errors.clear()
-                val retryTotal = targets.size + retryLeft.size
-                for (path in retryLeft) {
+                val plainLeft = retryLeft.map { it.substringBefore("(") }
+                val retryTotal = targets.size + plainLeft.size
+                for (path in plainLeft) {
                     try {
-                        patches[path] = downloadRawBytes(owner, repo, branch, path)
-                    } catch (_: Exception) {
-                        errors += path
+                        patches[path] = downloadWithRetry(owner, repo, branch, path)
+                    } catch (e: IOException) {
+                        errors += shortError(path, e)
                     }
                     val current = done.incrementAndGet()
                     try {

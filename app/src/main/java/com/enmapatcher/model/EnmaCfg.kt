@@ -45,9 +45,46 @@ data class EnmaCfg(
     }
 
     private fun matches(pattern: String, path: String): Boolean {
-        val normalized = pattern.replace('\\', '/').trim().trimEnd('/')
-        if (normalized.isEmpty()) return false
-        return path == normalized || path.startsWith(normalized + "/")
+        val trimmed = pattern.replace('\\', '/').trim()
+        if (trimmed.isEmpty()) return false
+        val normalized = trimmed.trimEnd('/')
+        if (trimmed.endsWith("/")) {
+            return path == normalized || path.startsWith(normalized + "/") ||
+                path.contains("/$normalized/")
+        }
+        if ('*' !in normalized && '?' !in normalized) {
+            return path == normalized || path.startsWith(normalized + "/")
+        }
+        val target = if ('/' in normalized) path else path.substringAfterLast('/')
+        if (target == normalized) return true
+        val regex = StringBuilder("^")
+        var i = 0
+        while (i < normalized.length) {
+            when {
+                normalized.startsWith("**/", i) -> {
+                    regex.append("(.*/)?")
+                    i += 3
+                }
+                normalized.startsWith("**", i) -> {
+                    regex.append(".*")
+                    i += 2
+                }
+                normalized[i] == '*' -> {
+                    regex.append("[^/]*")
+                    i++
+                }
+                normalized[i] == '?' -> {
+                    regex.append("[^/]")
+                    i++
+                }
+                else -> {
+                    regex.append(Regex.escape(normalized[i].toString()))
+                    i++
+                }
+            }
+        }
+        regex.append("$")
+        return Regex(regex.toString()).matches(target)
     }
 
     companion object {
@@ -55,6 +92,11 @@ data class EnmaCfg(
 
         private fun sanitize(raw: String) = raw.replace(Regex(",\\s*(?=[}\\]])"), "")
 
-        fun fromJson(raw: String): EnmaCfg = json.decodeFromString(sanitize(raw))
+        fun fromJson(raw: String): EnmaCfg {
+            val normalized = sanitize(raw)
+                .replace(Regex("\"include_ios\"\\s*:"), "\"include_iOS\":")
+                .replace(Regex("\"exclude_ios\"\\s*:"), "\"exclude_iOS\":")
+            return json.decodeFromString(normalized)
+        }
     }
 }
