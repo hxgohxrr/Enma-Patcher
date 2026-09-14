@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.net.Proxy
@@ -147,33 +148,6 @@ class GithubPatchSource(private val settings: AppSettings) {
             }
         }
 
-    suspend fun fetchPatchesFor(
-        owner: String,
-        repo: String,
-        branch: String,
-        onProgress: ((done: Int, total: Int, path: String) -> Unit)?
-    ): Pair<EnmaCfg, Map<String, ByteArray>> = withContext(Dispatchers.IO) {
-        val blobs = runCatching { listRepoBlobs(owner, repo, branch) }.getOrNull()
-        val total = blobs?.values?.sum() ?: Long.MAX_VALUE
-        if (blobs != null && total <= ZIPBALL_MAX_BYTES) {
-            val zipped = runCatching { fetchPatchesByZip(owner, repo, branch) }.getOrNull()
-            if (zipped != null && !hasLfsPointers(zipped.second)) {
-                try {
-                    onProgress?.invoke(zipped.second.size, zipped.second.size, "")
-                } catch (_: Exception) {
-                }
-                return@withContext zipped
-            }
-        }
-        val rawResult = runCatching { fetchPatchesByRaw(owner, repo, branch, onProgress) }
-        if (rawResult.isSuccess) return@withContext rawResult.getOrThrow()
-        try {
-            fetchPatchesByZip(owner, repo, branch)
-        } catch (_: Exception) {
-            throw rawResult.exceptionOrNull() ?: IOException("PatchDownloadFailed")
-        }
-    }
-
     companion object {
         private const val BUFFER = 65536
         private const val MAX_RAW_FILE_BYTES = 512L * 1024L * 1024L
@@ -244,6 +218,34 @@ class GithubPatchSource(private val settings: AppSettings) {
             }
         }
 
+        suspend fun fetchPatchesFor(
+            owner: String,
+            repo: String,
+            branch: String,
+            onProgress: ((done: Int, total: Int, path: String) -> Unit)?,
+            spillDir: File? = null,
+        ): Pair<EnmaCfg, Map<String, PatchBlob>> = withContext(Dispatchers.IO) {
+            val blobs = runCatching { listRepoBlobs(owner, repo, branch) }.getOrNull()
+            val total = blobs?.values?.sum() ?: Long.MAX_VALUE
+            if (blobs != null && total <= ZIPBALL_MAX_BYTES) {
+                val zipped = runCatching { fetchPatchesByZip(owner, repo, branch, spillDir) }.getOrNull()
+                if (zipped != null && !hasLfsPointers(zipped.second)) {
+                    try {
+                        onProgress?.invoke(zipped.second.size, zipped.second.size, "")
+                    } catch (_: Exception) {
+                    }
+                    return@withContext zipped
+                }
+            }
+            val rawResult = runCatching { fetchPatchesByRaw(owner, repo, branch, onProgress, spillDir) }
+            if (rawResult.isSuccess) return@withContext rawResult.getOrThrow()
+            try {
+                fetchPatchesByZip(owner, repo, branch, spillDir)
+            } catch (_: Exception) {
+                throw rawResult.exceptionOrNull() ?: IOException("PatchDownloadFailed")
+            }
+        }
+
         fun listRepoBlobs(owner: String, repo: String, branch: String): Map<String, Long> {
             ensureRepoAllowed(owner, repo)
             val key = owner.trim().lowercase() + "/" + repo.trim().lowercase() + "@" + branch
@@ -289,10 +291,10 @@ class GithubPatchSource(private val settings: AppSettings) {
             return listRepoBlobs(owner, repo, branch).keys.toList()
         }
 
-        private fun hasLfsPointers(files: Map<String, ByteArray>): Boolean {
-            for ((_, bytes) in files) {
-                if (bytes.size in 100..2048) {
-                    if (bytes.toString(Charsets.UTF_8).startsWith("version https://git-lfs.github.com/spec/v1")) {
+        private fun hasLfsPointers(files: Map<String, PatchBlob>): Boolean {
+            for ((_, blob) in files) {
+                if (blob is PatchBlob.Mem && blob.data.size in 100..2048) {
+                    if (blob.data.toString(Charsets.UTF_8).startsWith("version https://git-lfs.github.com/spec/v1")) {
                         return true
                     }
                 }
@@ -320,11 +322,12 @@ class GithubPatchSource(private val settings: AppSettings) {
             branch: String,
             path: String,
             attempts: Int = 4,
-        ): ByteArray {
+            spillDir: File? = null,
+        ): PatchBlob {
             var last: IOException? = null
             for (attempt in 1..attempts) {
                 try {
-                    return downloadRawBytes(owner, repo, branch, path)
+                    return downloadRawBytes(owner, repo, branch, path, spillDir)
                 } catch (e: IOException) {
                     last = e
                     if (!isRetryable(e) || attempt == attempts) break
@@ -334,20 +337,21 @@ class GithubPatchSource(private val settings: AppSettings) {
             throw last ?: IOException("RawDownloadFailed:$path")
         }
 
-        fun downloadRawBytes(owner: String, repo: String, branch: String, path: String): ByteArray {            ensureRepoAllowed(owner, repo)
+        fun downloadRawBytes(
+            owner: String,
+            repo: String,
+            branch: String,
+            path: String,
+            spillDir: File? = null,
+        ): PatchBlob {
+            ensureRepoAllowed(owner, repo)
             client.newCall(Request.Builder().url(rawUrlFor(owner, repo, branch, path)).build())
                 .execute().use { response ->
                     if (!response.isSuccessful) throw IOException("RawDownloadFailed:${response.code}:$path")
-                    val source = response.body?.source() ?: throw IOException("RawEmpty:$path")
-                    val sink = okio.Buffer()
-                    var total = 0L
-                    while (true) {
-                        val read = source.read(sink, 65536L)
-                        if (read == -1L) break
-                        total += read
-                        if (total > MAX_RAW_FILE_BYTES) throw IOException("RawTooLarge:$path")
+                    val body = response.body ?: throw IOException("RawEmpty:$path")
+                    body.byteStream().use { ins ->
+                        return PatchBlob.readStream(ins, MAX_RAW_FILE_BYTES, path, spillDir)
                     }
-                    return sink.readByteArray()
                 }
         }
 
@@ -355,8 +359,9 @@ class GithubPatchSource(private val settings: AppSettings) {
             owner: String,
             repo: String,
             branch: String,
-            onProgress: ((done: Int, total: Int, path: String) -> Unit)?
-        ): Pair<EnmaCfg, Map<String, ByteArray>> = coroutineScope {
+            onProgress: ((done: Int, total: Int, path: String) -> Unit)?,
+            spillDir: File? = null,
+        ): Pair<EnmaCfg, Map<String, PatchBlob>> = coroutineScope {
             ensureRepoAllowed(owner, repo)
             var config = EnmaCfg()
             try {
@@ -365,7 +370,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             }
             val blobs = listRepoBlobs(owner, repo, branch)
             val targets = blobs.keys.filter { it != "enmapatcher.cfg.json" && config.allows(it) }
-            val patches = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+            val patches = java.util.concurrent.ConcurrentHashMap<String, PatchBlob>()
             val errors = java.util.concurrent.ConcurrentLinkedQueue<String>()
             val done = java.util.concurrent.atomic.AtomicInteger(0)
             val inFlight = java.util.concurrent.atomic.AtomicLong(0)
@@ -382,9 +387,9 @@ class GithubPatchSource(private val settings: AppSettings) {
                         inFlight.addAndGet(expected)
                         try {
                             try {
-                                val bytes = downloadWithRetry(owner, repo, branch, path)
-                                inFlight.addAndGet(bytes.size - expected)
-                                patches[path] = bytes
+                                val blob = downloadWithRetry(owner, repo, branch, path, 4, spillDir)
+                                inFlight.addAndGet(blob.size() - expected)
+                                patches[path] = blob
                             } catch (e: IOException) {
                                 inFlight.addAndGet(-expected)
                                 errors += shortError(path, e)
@@ -409,7 +414,7 @@ class GithubPatchSource(private val settings: AppSettings) {
                 val retryTotal = targets.size + plainLeft.size
                 for (path in plainLeft) {
                     try {
-                        patches[path] = downloadWithRetry(owner, repo, branch, path)
+                        patches[path] = downloadWithRetry(owner, repo, branch, path, 4, spillDir)
                     } catch (e: IOException) {
                         errors += shortError(path, e)
                     }
@@ -443,8 +448,9 @@ class GithubPatchSource(private val settings: AppSettings) {
         fun fetchPatchesByZip(
             owner: String,
             repo: String,
-            branch: String
-        ): Pair<EnmaCfg, Map<String, ByteArray>> {
+            branch: String,
+            spillDir: File? = null,
+        ): Pair<EnmaCfg, Map<String, PatchBlob>> {
             ensureRepoAllowed(owner, repo)
             val url = "https://api.github.com/repos/$owner/$repo/zipball/$branch"
             client.newCall(
@@ -455,7 +461,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             ).execute().use { response ->
                 if (!response.isSuccessful) throw IOException("PatchDownloadFailed:${response.code}")
                 var config = EnmaCfg()
-                val patches = mutableMapOf<String, ByteArray>()
+                val patches = mutableMapOf<String, PatchBlob>()
                 ZipInputStream(response.body!!.byteStream().buffered(BUFFER)).use { zis ->
                     var entry = zis.nextEntry
                     var stripPrefix: String? = null
@@ -470,26 +476,27 @@ class GithubPatchSource(private val settings: AppSettings) {
                             val relative = if (stripPrefix != null && name.startsWith(stripPrefix))
                                 name.removePrefix(stripPrefix) else name
                             if (relative == "enmapatcher.cfg.json") {
-                                config = EnmaCfg.fromJson(zis.readBytes().toString(Charsets.UTF_8))
+                                config = EnmaCfg.fromJson(readBounded(zis, 8L * 1024L * 1024L, name).toString(Charsets.UTF_8))
                             } else {
-                                patches[relative] = zis.readBytes()
+                                patches[relative] = PatchBlob.readStream(zis, MAX_ZIP_ENTRY_BYTES, name, spillDir)
                             }
                         }
                         zis.closeEntry()
                         entry = zis.nextEntry
                     }
                 }
+                if (hasLfsPointers(patches)) throw IOException("LfsPointer")
                 return config to patches
             }
         }
 
-        fun loadLocalZip(inputStream: InputStream): Pair<EnmaCfg, Map<String, ByteArray>> {
-            val rawEntries = ArrayList<Pair<String, ByteArray>>()
+        fun loadLocalZip(inputStream: InputStream, spillDir: File? = null): Pair<EnmaCfg, Map<String, PatchBlob>> {
+            val rawEntries = ArrayList<Pair<String, PatchBlob>>()
             ZipInputStream(inputStream.buffered(BUFFER)).use { zis ->
                 var entry = zis.nextEntry
                 while (entry != null) {
                     if (!entry.isDirectory) {
-                        rawEntries += entry.name to readBounded(zis, MAX_ZIP_ENTRY_BYTES, entry.name)
+                        rawEntries += entry.name to PatchBlob.readStream(zis, MAX_ZIP_ENTRY_BYTES, entry.name, spillDir)
                     }
                     zis.closeEntry()
                     entry = zis.nextEntry
@@ -497,20 +504,20 @@ class GithubPatchSource(private val settings: AppSettings) {
             }
             val stripPrefix = commonTopPrefix(rawEntries.map { it.first })
             var config = EnmaCfg()
-            for ((name, bytes) in rawEntries) {
+            for ((name, blob) in rawEntries) {
                 val relative = if (stripPrefix != null) name.removePrefix(stripPrefix) else name
                 if (relative == "enmapatcher.cfg.json") {
-                    config = runCatching { EnmaCfg.fromJson(bytes.toString(Charsets.UTF_8)) }
+                    config = runCatching { EnmaCfg.fromJson(blob.bytes().toString(Charsets.UTF_8)) }
                         .getOrDefault(EnmaCfg())
                     break
                 }
             }
-            val patches = LinkedHashMap<String, ByteArray>(rawEntries.size)
-            for ((name, bytes) in rawEntries) {
+            val patches = LinkedHashMap<String, PatchBlob>(rawEntries.size)
+            for ((name, blob) in rawEntries) {
                 val relative = if (stripPrefix != null) name.removePrefix(stripPrefix) else name
                 if (relative == "enmapatcher.cfg.json" || relative.isBlank()) continue
                 if (!config.allows(relative)) continue
-                patches[relative] = bytes
+                patches[relative] = blob
             }
             if (patches.isEmpty() && config.appName.isNullOrBlank() && config.version.isNullOrBlank()) {
                 throw IOException("EmptyModZip")

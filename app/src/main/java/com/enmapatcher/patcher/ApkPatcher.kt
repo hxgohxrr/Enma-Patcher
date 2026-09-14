@@ -20,7 +20,7 @@ class ApkPatcher(private val workDir: File) {
 
     suspend fun applyFileReplacements(
         apkFile: File,
-        patchMap: Map<String, ByteArray>,
+        patchMap: Map<String, PatchBlob>,
         appName: String? = null,
         currentLabel: String? = null,
         mergeApks: List<File> = emptyList(),
@@ -53,7 +53,7 @@ class ApkPatcher(private val workDir: File) {
 
     private fun applyFast(
         apkFile: File,
-        patchMap: Map<String, ByteArray>,
+        patchMap: Map<String, PatchBlob>,
         appName: String?,
         currentLabel: String?,
         mergeApks: List<File>,
@@ -76,11 +76,15 @@ class ApkPatcher(private val workDir: File) {
                     written += name
                     when {
                         name == "AndroidManifest.xml" && mergeApks.isNotEmpty() -> {
-                            val raw = patchBytes ?: base.readData(entry)
-                            writeFreshDeflated(counting, central, name, removeSplitRequirements(raw), entry.dosTime, entry.dosDate)
+                            val raw = patchBytes?.bytes() ?: base.readData(entry)
+                            raw.inputStream().use { ins ->
+                                writeFreshDeflated(counting, central, name, ins, entry.dosTime, entry.dosDate)
+                            }
                         }
                         patchBytes != null -> {
-                            writeFreshDeflated(counting, central, name, patchBytes, entry.dosTime, entry.dosDate)
+                            patchBytes.openStream().use { ins ->
+                                writeFreshDeflated(counting, central, name, ins, entry.dosTime, entry.dosDate)
+                            }
                         }
                         name == "resources.arsc" && appName != null && currentLabel != null -> {
                             val patched = AppNamePatcher.patch(base.readData(entry), currentLabel, appName)
@@ -90,16 +94,20 @@ class ApkPatcher(private val workDir: File) {
                             writeFreshStored(counting, central, name, base.readData(entry), entry.dosTime, entry.dosDate)
                         }
                         entry.hasDescriptor -> {
-                            writeFreshDeflated(counting, central, name, base.readData(entry), entry.dosTime, entry.dosDate)
+                            base.readData(entry).inputStream().use { ins ->
+                                writeFreshDeflated(counting, central, name, ins, entry.dosTime, entry.dosDate)
+                            }
                         }
                         else -> {
                             copyVerbatim(base, entry, counting, central)
                         }
                     }
                 }
-                for ((path, bytes) in patchMap) {
+                for ((path, blob) in patchMap) {
                     if (path !in written) {
-                        writeFreshDeflated(counting, central, path, bytes, dosNow(), dosNowDate())
+                        blob.openStream().use { ins ->
+                            writeFreshDeflated(counting, central, path, ins, dosNow(), dosNowDate())
+                        }
                         written += path
                     }
                 }
@@ -113,9 +121,13 @@ class ApkPatcher(private val workDir: File) {
                         if (name in written) continue
                         val patchBytes = patchMap[name]
                         if (patchBytes != null) {
-                            writeFreshDeflated(counting, central, name, patchBytes, entry.dosTime, entry.dosDate)
+                            patchBytes.openStream().use { ins ->
+                                writeFreshDeflated(counting, central, name, ins, entry.dosTime, entry.dosDate)
+                            }
                         } else if (entry.hasDescriptor) {
-                            writeFreshDeflated(counting, central, name, bypass.readData(entry), entry.dosTime, entry.dosDate)
+                            bypass.readData(entry).inputStream().use { ins ->
+                                writeFreshDeflated(counting, central, name, ins, entry.dosTime, entry.dosDate)
+                            }
                         } else {
                             copyVerbatim(bypass, entry, counting, central, name)
                         }
@@ -130,11 +142,15 @@ class ApkPatcher(private val workDir: File) {
                         if (name in written) continue
                         val patchBytes = patchMap[name]
                         if (patchBytes != null) {
-                            writeFreshDeflated(counting, central, name, patchBytes, entry.dosTime, entry.dosDate)
+                            patchBytes.openStream().use { ins ->
+                                writeFreshDeflated(counting, central, name, ins, entry.dosTime, entry.dosDate)
+                            }
                         } else if (entry.method == ZipEntry.STORED && !entry.hasDescriptor) {
                             copyVerbatim(splitApk, entry, counting, central, name)
                         } else if (entry.hasDescriptor) {
-                            writeFreshDeflated(counting, central, name, splitApk.readData(entry), entry.dosTime, entry.dosDate)
+                            splitApk.readData(entry).inputStream().use { ins ->
+                                writeFreshDeflated(counting, central, name, ins, entry.dosTime, entry.dosDate)
+                            }
                         } else {
                             copyVerbatim(splitApk, entry, counting, central, name)
                         }
@@ -184,7 +200,7 @@ class ApkPatcher(private val workDir: File) {
         out: CountingOutputStream,
         central: MutableList<FastCentralEntry>,
         name: String,
-        bytes: ByteArray,
+        source: java.io.InputStream,
         dosTime: Int,
         dosDate: Int,
     ) {
@@ -197,21 +213,22 @@ class ApkPatcher(private val workDir: File) {
         val crc = CRC32()
         val deflater = Deflater(Deflater.BEST_SPEED, true)
         var compSize = 0L
+        var total = 0L
         val buf = ByteArray(65536)
         val outBuf = ByteArray(65536)
         try {
-            var off = 0
-            while (off < bytes.size) {
-                val chunk = minOf(65536, bytes.size - off)
-                crc.update(bytes, off, chunk)
-                deflater.setInput(bytes, off, chunk)
+            while (true) {
+                val chunk = source.read(buf)
+                if (chunk < 0) break
+                total += chunk
+                crc.update(buf, 0, chunk)
+                deflater.setInput(buf, 0, chunk)
                 while (!deflater.needsInput()) {
                     val n = deflater.deflate(outBuf)
                     if (n <= 0) break
                     out.write(outBuf, 0, n)
                     compSize += n
                 }
-                off += chunk
             }
             deflater.finish()
             while (!deflater.finished()) {
@@ -223,7 +240,7 @@ class ApkPatcher(private val workDir: File) {
         } finally {
             deflater.end()
         }
-        writeDataDescriptor(out, crc.value, compSize, bytes.size.toLong())
+        writeDataDescriptor(out, crc.value, compSize, total)
         central += FastCentralEntry(
             name = name,
             nameBytes = nameBytes,
@@ -231,7 +248,7 @@ class ApkPatcher(private val workDir: File) {
             method = ZipEntry.DEFLATED,
             crc = crc.value,
             compSize = compSize,
-            size = bytes.size.toLong(),
+            size = total,
             localOffset = start,
             extra = ByteArray(0),
             externalAttrs = 0,
@@ -580,7 +597,7 @@ class ApkPatcher(private val workDir: File) {
 
     private fun applyLegacy(
         apkFile: File,
-        patchMap: Map<String, ByteArray>,
+        patchMap: Map<String, PatchBlob>,
         appName: String?,
         currentLabel: String?,
         mergeApks: List<File>,
@@ -604,13 +621,13 @@ class ApkPatcher(private val workDir: File) {
                     originalNames += name
                     when {
                         name == "AndroidManifest.xml" && mergeApks.isNotEmpty() -> {
-                            val raw = patchBytes ?: source.getInputStream(entry).readBytes()
+                            val raw = patchBytes?.bytes() ?: source.getInputStream(entry).readBytes()
                             zos.putNextEntry(ZipEntry(name))
                             zos.write(removeSplitRequirements(raw))
                         }
                         patchBytes != null -> {
                             zos.putNextEntry(ZipEntry(name))
-                            zos.write(patchBytes)
+                            patchBytes.openStream().use { it.copyTo(zos, BUFFER) }
                         }
                         name == "resources.arsc" && appName != null && currentLabel != null -> {
                             val original = source.getInputStream(entry).readBytes()
@@ -638,10 +655,10 @@ class ApkPatcher(private val workDir: File) {
                     zos.closeEntry()
                 }
 
-                patchMap.forEach { (path, bytes) ->
+                patchMap.forEach { (path, blob) ->
                     if (path !in originalNames) {
                         zos.putNextEntry(ZipEntry(path))
-                        zos.write(bytes)
+                        blob.openStream().use { it.copyTo(zos, BUFFER) }
                         zos.closeEntry()
                         originalNames += path
                     }
@@ -659,7 +676,7 @@ class ApkPatcher(private val workDir: File) {
                             val patchBytes = patchMap[name]
                             if (patchBytes != null) {
                                 zos.putNextEntry(ZipEntry(name))
-                                zos.write(patchBytes)
+                                patchBytes.openStream().use { it.copyTo(zos, BUFFER) }
                             } else {
                                 zos.putNextEntry(storedAligned(name, entry.size, entry.crc, counting))
                                 bzip.getInputStream(entry).use { it.copyTo(zos, bufferSize = BUFFER) }
@@ -680,7 +697,7 @@ class ApkPatcher(private val workDir: File) {
                             val patchBytes = patchMap[name]
                             if (patchBytes != null) {
                                 zos.putNextEntry(ZipEntry(name))
-                                zos.write(patchBytes)
+                                patchBytes.openStream().use { it.copyTo(zos, BUFFER) }
                             } else if (entry.method == ZipEntry.STORED) {
                                 zos.putNextEntry(storedAligned(name, entry.size, entry.crc, counting))
                                 splitSrc.getInputStream(entry).use { it.copyTo(zos, bufferSize = BUFFER) }

@@ -23,6 +23,8 @@ import java.io.IOException
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
+private const val MAX_DRM_BYTES = 1L * 1024L * 1024L * 1024L
+
 class EnmaPatcherEngine(private val context: Context) {
 
     data class Result(val outputApk: File, val config: EnmaCfg, val backupApk: File? = null)
@@ -34,6 +36,7 @@ class EnmaPatcherEngine(private val context: Context) {
     ): Result = coroutineScope {
         val cacheRoot = File(context.cacheDir, "enmapatcher_${System.currentTimeMillis()}")
         cacheRoot.mkdirs()
+        val blobDir = File(cacheRoot, "blobs").also { it.mkdirs() }
         async(Dispatchers.IO) {
             context.cacheDir.listFiles { f ->
                 f.isDirectory && (
@@ -88,7 +91,7 @@ class EnmaPatcherEngine(private val context: Context) {
             Triple(baseApk, splits, label)
         }
         var mergedConfig = EnmaCfg()
-        val perModPatches = ArrayList<Triple<ModEntry, EnmaCfg, Map<String, ByteArray>>>()
+        val perModPatches = ArrayList<Triple<ModEntry, EnmaCfg, Map<String, PatchBlob>>>()
         val modTitles = HashMap<String, String>()
         val modDepths = HashMap<String, Int>()
         val seenRepos = HashSet<String>()
@@ -107,7 +110,7 @@ class EnmaPatcherEngine(private val context: Context) {
             onStep(PatchStep(title, context.getString(R.string.step_download_mod_running), PatchStepStatus.RUNNING))
             try {
                 val (cfg, files) = withContext(Dispatchers.IO) {
-                    downloadMod(mod) { done, _, _ ->
+                    downloadMod(mod, blobDir) { done, _, _ ->
                         onStep(
                             PatchStep(
                                 title,
@@ -134,7 +137,7 @@ class EnmaPatcherEngine(private val context: Context) {
                     val subBytes = files.entries.firstOrNull { it.key == "mods/mods.json" }?.value
                     if (subBytes != null) {
                         var insertAt = queueIndex + 1
-                        for (sub in parseSubMods(subBytes)) {
+                        for (sub in parseSubMods(subBytes.bytes())) {
                             val key = sub.repo.trim().lowercase() + "@" + sub.branch.trim().lowercase()
                             if (key in seenRepos) continue
                             seenRepos += key
@@ -194,7 +197,7 @@ class EnmaPatcherEngine(private val context: Context) {
             val other = mod.peerConflict(mods, cfgById)
             if (other != null) throw IOException("ModConflict:${modLabel(mod)}:$other")
         }
-        var patchMap = LinkedHashMap<String, ByteArray>()
+        var patchMap = LinkedHashMap<String, PatchBlob>()
         val provider = HashMap<String, Int>()
         for ((pi, triple) in perModPatches.withIndex()) {
             val mod = triple.first
@@ -210,11 +213,11 @@ class EnmaPatcherEngine(private val context: Context) {
                 )
                 continue
             }
-            for ((path, bytes) in files) {
+            for ((path, blob) in files) {
                 if (isMetaFile(path)) continue
                 if (!cfg.allows(path)) continue
                 if (path !in patchMap) {
-                    patchMap[path] = bytes
+                    patchMap[path] = blob
                     provider[path] = pi
                 }
             }
@@ -223,16 +226,17 @@ class EnmaPatcherEngine(private val context: Context) {
             for ((pi, triple) in perModPatches.withIndex().reversed()) {
                 val cfg = triple.second
                 if (!cfg.effectiveAndroid()) continue
-                for ((key, ipsBytes) in triple.third) {
+                for ((key, ipsBlob) in triple.third) {
                     if (!IpsPatcher.isIpsEntry(key)) continue
                     val target = IpsPatcher.targetFor(key) ?: continue
                     val owner = provider[target]
                     if (owner != null && owner < pi) continue
-                    val baseBytes = patchMap[target] ?: runCatching {
-                        baseZip.getEntry(target)?.let { baseZip.getInputStream(it).readBytes() }
-                    }.getOrNull() ?: continue
                     runCatching {
-                        patchMap[target] = IpsPatcher.apply(baseBytes, ipsBytes)
+                        val baseBytes = patchMap[target]?.bytes()
+                            ?: baseZip.getEntry(target)?.let { baseZip.getInputStream(it).readBytes() }
+                            ?: throw IllegalArgumentException("NoBase:$target")
+                        val patched = IpsPatcher.apply(baseBytes, ipsBlob.bytes())
+                        patchMap[target] = PatchBlob.ofBytes(patched, blobDir)
                         provider[target] = pi
                     }
                 }
@@ -250,8 +254,8 @@ class EnmaPatcherEngine(private val context: Context) {
             )
             runCatching {
                 val uri = Uri.parse(settings.drmbUri)
-                val (drmbBase, splitNames, drmbFile) = loadDrmb(uri)
-                val merged = LinkedHashMap<String, ByteArray>(drmbBase.size + patchMap.size)
+                val (drmbBase, splitNames, drmbFile) = loadDrmb(uri, blobDir)
+                val merged = LinkedHashMap<String, PatchBlob>(drmbBase.size + patchMap.size)
                 merged.putAll(drmbBase)
                 for ((path, bytes) in patchMap) {
                     merged[path] = bytes
@@ -279,6 +283,7 @@ class EnmaPatcherEngine(private val context: Context) {
             }
         }
         val smaliPatches = patchMap.filter { it.key.startsWith("smali/") }
+            .mapValues { it.value.bytes() }
         if (smaliPatches.isNotEmpty()) {
             val smaliTitle = context.getString(R.string.step_compile_smali)
             onStep(PatchStep(smaliTitle, context.getString(R.string.step_compile_smali_running, smaliPatches.size), PatchStepStatus.RUNNING))
@@ -294,7 +299,7 @@ class EnmaPatcherEngine(private val context: Context) {
                     throw IllegalStateException(context.getString(R.string.error_smali_failed, smaliPatches.size))
                 }
                 for (key in smaliPatches.keys) patchMap.remove(key)
-                for ((path, bytes) in dexPatches) patchMap[path] = bytes
+                for ((path, bytes) in dexPatches) patchMap[path] = PatchBlob.ofBytes(bytes, blobDir)
                 onStep(PatchStep(smaliTitle, context.getString(R.string.step_compile_smali_done, dexPatches.size), PatchStepStatus.DONE))
             } catch (e: Exception) {
                 onStep(PatchStep(smaliTitle, "${e.javaClass.simpleName}: ${e.message}", PatchStepStatus.ERROR))
@@ -390,20 +395,22 @@ class EnmaPatcherEngine(private val context: Context) {
 
     private suspend fun downloadMod(
         mod: ModEntry,
+        blobDir: File,
         onProgress: ((done: Int, total: Int, path: String) -> Unit)?,
-    ): Pair<EnmaCfg, Map<String, ByteArray>> {
+    ): Pair<EnmaCfg, Map<String, PatchBlob>> {
         return if (mod.kind == ModKind.GITHUB) {
-            GithubPatchSource.fetchPatchesByRaw(
+            GithubPatchSource.fetchPatchesFor(
                 mod.owner,
                 mod.repoName,
                 mod.branch.ifBlank { "main" },
                 onProgress,
+                blobDir,
             )
         } else {
             val uri = Uri.parse(mod.zipUri)
             val stream = context.contentResolver.openInputStream(uri)
                 ?: throw IllegalArgumentException(context.getString(R.string.error_open_zip, modLabel(mod)))
-            val result = stream.use { GithubPatchSource.loadLocalZip(it) }
+            val result = stream.use { GithubPatchSource.loadLocalZip(it, blobDir) }
             try {
                 onProgress?.invoke(result.second.size, result.second.size, modLabel(mod))
             } catch (_: Exception) {
@@ -414,8 +421,9 @@ class EnmaPatcherEngine(private val context: Context) {
 
     private suspend fun loadDrmb(
         uri: Uri,
-    ): Triple<Map<String, ByteArray>, Set<String>, File> = withContext(Dispatchers.IO) {
-        val baseFiles = mutableMapOf<String, ByteArray>()
+        blobDir: File,
+    ): Triple<Map<String, PatchBlob>, Set<String>, File> = withContext(Dispatchers.IO) {
+        val baseFiles = mutableMapOf<String, PatchBlob>()
         val splitNames = mutableSetOf<String>()
         val file = File(uri.toString())
         ZipInputStream(file.inputStream()).use { zis ->
@@ -423,7 +431,7 @@ class EnmaPatcherEngine(private val context: Context) {
             while (entry != null) {
                 val name = entry.name.replace('\\', '/')
                 if (name.startsWith("base/") && !entry.isDirectory) {
-                    baseFiles[name.removePrefix("base/")] = zis.readBytes()
+                    baseFiles[name.removePrefix("base/")] = PatchBlob.readStream(zis, MAX_DRM_BYTES, name, blobDir)
                 } else if (name.startsWith("split/") && !entry.isDirectory) {
                     splitNames += name.removePrefix("split/")
                 }

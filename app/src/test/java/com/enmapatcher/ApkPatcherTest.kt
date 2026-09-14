@@ -1,6 +1,7 @@
 package com.enmapatcher
 
 import com.enmapatcher.patcher.ApkPatcher
+import com.enmapatcher.patcher.PatchBlob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -83,9 +84,15 @@ class ApkPatcherTest {
         try {
             val apk = buildFixture(dir)
             val split = buildSplit(dir)
+            val diskFile = File(dir, "big_patch.bin")
+            diskFile.outputStream().buffered().use { out ->
+                val chunk = "0123456789abcdef".repeat(4096).toByteArray()
+                repeat(64) { out.write(chunk) }
+            }
             val patchMap = mapOf(
-                "assets/data/blob_3.bin" to "PATCHED-CONTENT".repeat(1000).toByteArray(),
-                "assets/brand_new.bin" to "new-file".toByteArray(),
+                "assets/data/blob_3.bin" to PatchBlob.Mem("PATCHED-CONTENT".repeat(1000).toByteArray()),
+                "assets/brand_new.bin" to PatchBlob.Mem("new-file".toByteArray()),
+                "assets/disk_blob.bin" to PatchBlob.Disk(diskFile),
             )
             val fastWork = File(dir, "fast").also { it.mkdirs() }
             val legacyWork = File(dir, "legacy").also { it.mkdirs() }

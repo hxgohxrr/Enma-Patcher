@@ -24,11 +24,25 @@ class ModPolicyChecker(private val policyUrl: String) {
         }
     }
 
-    fun checkContents(policy: ModPolicy, files: Map<String, ByteArray>) {
+    fun checkContents(policy: ModPolicy, files: Map<String, PatchBlob>) {
         if (policy.bannedWords.isEmpty()) return
-        for ((path, bytes) in files) {
-            if (bytes.size > 262_144 || bytes.contains(0)) continue
-            val text = runCatching { bytes.toString(Charsets.UTF_8) }.getOrNull() ?: continue
+        for ((path, blob) in files) {
+            val head = when (blob) {
+                is PatchBlob.Mem -> {
+                    if (blob.data.size > 262_144 || blob.data.contains(0)) continue
+                    blob.data
+                }
+                is PatchBlob.Disk -> {
+                    if (blob.file.length() > 262_144) continue
+                    val probe = ByteArray(65536)
+                    val read = runCatching {
+                        blob.file.inputStream().use { it.read(probe) }
+                    }.getOrNull() ?: continue
+                    if (read <= 0 || probe.copyOf(read).contains(0)) continue
+                    probe.copyOf(read)
+                }
+            }
+            val text = runCatching { head.toString(Charsets.UTF_8) }.getOrNull() ?: continue
             if (!text.any { it.isLetterOrDigit() }) continue
             val blocked = policy.findBlockedWord(text)
             if (blocked != null) throw SecurityException("BlockedWord:$blocked:$path")
