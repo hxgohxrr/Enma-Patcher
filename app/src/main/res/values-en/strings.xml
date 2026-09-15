@@ -186,4 +186,19 @@ Do you trust its origin?
 
 If unsure, CANCEL.</string>
     <string name="warning_mods_hold">Hold to continue</string>
+    <string name="onboard_skip">Skip</string>
+    <string name="onboard_next">Next</string>
+    <string name="onboard_back">Back</string>
+    <string name="onboard_start">Start</string>
+    <string name="onboard_p1_title">What does EnmaPatcher do?</string>
+    <string name="onboard_p1_text">Patches your installed game with GitHub or ZIP mods, no root needed. Pick the target app, add your mods and tap Patch.</string>
+    <string name="onboard_p2_title">Mods and saves</string>
+    <string name="onboard_p2_text">Order your mods: the top one wins. Preview their files and check badges. In Saves you can export and import your saves.</string>
+    <string name="onboard_p3_title">Important notes</string>
+    <string name="onboard_p3_text">Confirm security warnings only if you trust the source. Uninstall the game before installing the patch (signature changes). Grant file access for saves.</string>
+    <string name="onboard_p4_title">Report a bug</string>
+    <string name="onboard_p4_text">Tell us: what you were doing, which mods and branch, game version. If the app failed, share the crash_*.txt or patch_*.log it makes, or copy the summary with the button.</string>
+    <string name="onboard_copy_debug">Copy summary</string>
+    <string name="onboard_copied">Copied!</string>
+    <string name="settings_tutorial">View tutorial</string>
 </resources>

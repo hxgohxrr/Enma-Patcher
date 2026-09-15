@@ -186,4 +186,19 @@ Vertraust du der Quelle?
 
 Bei Unsicherheit ABBRECHEN.</string>
     <string name="warning_mods_hold">Gedrückt halten, um fortzufahren</string>
+    <string name="onboard_skip">Überspringen</string>
+    <string name="onboard_next">Weiter</string>
+    <string name="onboard_back">Zurück</string>
+    <string name="onboard_start">Start</string>
+    <string name="onboard_p1_title">Was macht EnmaPatcher?</string>
+    <string name="onboard_p1_text">Patcht dein installiertes Spiel mit GitHub- oder ZIP-Mods, ohne Root. Wähle die Ziel-App, füge Mods hinzu und tippe auf Patchen.</string>
+    <string name="onboard_p2_title">Mods und Spielstände</string>
+    <string name="onboard_p2_text">Sortiere Mods: der oberste gewinnt. Vorschau und Badges prüfen. Unter Spielstände ex-/importieren.</string>
+    <string name="onboard_p3_title">Wichtige Hinweise</string>
+    <string name="onboard_p3_text">Warnungen nur bei vertrauenswürdiger Quelle bestätigen. Spiel vor Patch-Install deinstallieren (Signatur wechselt). Dateizugriff für Spielstände erlauben.</string>
+    <string name="onboard_p4_title">Fehler melden</string>
+    <string name="onboard_p4_text">Sag uns: was du getan hast, welche Mods/Branch, Spielversion. Bei Fehlern das erzeugte crash_*.txt/patch_*.log teilen oder Übersicht kopieren.</string>
+    <string name="onboard_copy_debug">Übersicht kopieren</string>
+    <string name="onboard_copied">Kopiert!</string>
+    <string name="settings_tutorial">Tutorial ansehen</string>
 </resources>

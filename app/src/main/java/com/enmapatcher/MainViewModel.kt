@@ -91,6 +91,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _pendingCrashLog = MutableStateFlow<File?>(null)
     val pendingCrashLog: StateFlow<File?> = _pendingCrashLog.asStateFlow()
 
+    private val _showOnboarding = MutableStateFlow(false)
+    val showOnboarding: StateFlow<Boolean> = _showOnboarding.asStateFlow()
+
+    fun setOnboardingDone(done: Boolean) {
+        if (done) {
+            val base = _settings.value.copy(onboardingDone = true)
+            _settings.value = base
+            viewModelScope.launch { persistSettings(base) }
+        }
+        _showOnboarding.value = !done
+    }
+
+    fun openOnboarding() {
+        _showOnboarding.value = true
+    }
+
+    fun getDebugInfo(): String {
+        val s = _settings.value
+        val mods = s.effectiveMods().filter { it.enabled }.joinToString("\n- ", prefix = "- ")
+        return buildString {
+            appendLine("EnmaPatcher " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")")
+            appendLine("Android " + android.os.Build.VERSION.RELEASE + " (SDK " + android.os.Build.VERSION.SDK_INT + ")")
+            appendLine("Device " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL)
+            appendLine("Target " + s.effectivePackage() + " installed=" + _appInstalled.value)
+            appendLine("Game version " + (_gameVersion.value ?: "?"))
+            appendLine("Mods:")
+            appendLine(mods.ifBlank { "-" })
+        }
+    }
+
     fun loadPendingCrashLog() {
         _pendingCrashLog.value = CrashLogs.pending(context)
     }
@@ -110,6 +140,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         _settings.value = migrated
                         GithubPatchSource.authToken = migrated.githubToken
                         applyLocale(migrated.language)
+                        if (!migrated.onboardingDone) _showOnboarding.value = true
                         if (migrated != saved) persistSettings(migrated)
                     }
             }

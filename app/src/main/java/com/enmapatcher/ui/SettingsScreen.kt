@@ -470,6 +470,15 @@ fun SettingsScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = {
+                    viewModel.openOnboarding()
+                    onBack()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.settings_tutorial))
+            }
             Button(
                 enabled = !drmbCopying,
                 onClick = {
@@ -493,6 +502,7 @@ fun SettingsScreen(
                             appNameOverride = appNameOverride.trim(),
                             targetMode = viewModel.settings.value.targetMode,
                             manualPackage = viewModel.settings.value.manualPackage,
+                            onboardingDone = viewModel.settings.value.onboardingDone,
                         )
                     )
                     onBack()

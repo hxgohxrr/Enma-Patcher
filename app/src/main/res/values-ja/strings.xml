@@ -186,4 +186,19 @@
 
 不明な場合はキャンセル。</string>
     <string name="warning_mods_hold">長押しで続行</string>
+    <string name="onboard_skip">スキップ</string>
+    <string name="onboard_next">次へ</string>
+    <string name="onboard_back">戻る</string>
+    <string name="onboard_start">開始</string>
+    <string name="onboard_p1_title">EnmaPatcherとは?</string>
+    <string name="onboard_p1_text">GitHubやZIP modでインストール済みゲームをパッチ(root不要)。対象アプリを選びmodを追加しパッチ選。</string>
+    <string name="onboard_p2_title">modとセーブ</string>
+    <string name="onboard_p2_text">modを並べ替え:上が優先。ファイルを確認しバッジをチェック。セーブ画面で出力/入力可。</string>
+    <string name="onboard_p3_title">重要事項</string>
+    <string name="onboard_p3_text">信頼できる提供元のみ警告を承認。署名が変わるためパッチ前にゲームをアンインストール。セーブ用にファイル権限を許可。</string>
+    <string name="onboard_p4_title">バグ報告</string>
+    <string name="onboard_p4_text">内容・modとブランチ・ゲーム版を記載。失敗時は自動生成のcrash_*.txt/patch_*.logを共有、またはボタンで概要をコピー。</string>
+    <string name="onboard_copy_debug">概要をコピー</string>
+    <string name="onboard_copied">コピー済み!</string>
+    <string name="settings_tutorial">チュートリアル</string>
 </resources>

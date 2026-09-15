@@ -19,7 +19,8 @@ data class AppSettings(
     val targetMode: String = "auto",
     val manualPackage: String = "",
     val appNameOverride: String = "",
-    val githubToken: String = ""
+    val githubToken: String = "",
+    val onboardingDone: Boolean = false
 ) {
     val githubOwner: String get() = githubRepo.substringBefore("/")
     val githubRepoName: String get() = githubRepo.substringAfter("/")

@@ -186,4 +186,19 @@
 
 Si no estás seguro, CANCELA.</string>
     <string name="warning_mods_hold">Mantener pulsado para continuar</string>
+    <string name="onboard_skip">Omitir</string>
+    <string name="onboard_next">Siguiente</string>
+    <string name="onboard_back">Atrás</string>
+    <string name="onboard_start">Empezar</string>
+    <string name="onboard_p1_title">¿Qué hace EnmaPatcher?</string>
+    <string name="onboard_p1_text">Parchea el juego que tengas instalado con mods de GitHub o ZIPs, sin root. Elige la app objetivo, añade tus mods y pulsa Parchear.</string>
+    <string name="onboard_p2_title">Mods y partidas</string>
+    <string name="onboard_p2_text">Ordena los mods: el de arriba tiene más prioridad. Previsualiza sus archivos y mira sus badges. En Partidas puedes exportar e importar tus saves.</string>
+    <string name="onboard_p3_title">Avisos importantes</string>
+    <string name="onboard_p3_text">Confirma los avisos de seguridad solo si confías en el origen. Desinstala el juego antes de instalar el parche (la firma cambia). Concede acceso a archivos para las partidas.</string>
+    <string name="onboard_p4_title">Reportar un fallo</string>
+    <string name="onboard_p4_text">Cuéntanos: qué hacías, qué mods y rama usabas y versión del juego. Si la app falló, comparte el crash_*.txt o patch_*.log que genera sola, o copia el resumen con el botón.</string>
+    <string name="onboard_copy_debug">Copiar resumen</string>
+    <string name="onboard_copied">¡Copiado!</string>
+    <string name="settings_tutorial">Ver tutorial</string>
 </resources>

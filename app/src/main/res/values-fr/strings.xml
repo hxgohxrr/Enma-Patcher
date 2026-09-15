@@ -186,4 +186,19 @@ Fais-tu confiance à son origine ?
 
 En cas de doute, ANNULEZ.</string>
     <string name="warning_mods_hold">Maintenir pour continuer</string>
+    <string name="onboard_skip">Passer</string>
+    <string name="onboard_next">Suivant</string>
+    <string name="onboard_back">Retour</string>
+    <string name="onboard_start">Commencer</string>
+    <string name="onboard_p1_title">Que fait EnmaPatcher ?</string>
+    <string name="onboard_p1_text">Patche ton jeu installé avec des mods GitHub ou ZIP, sans root. Choisis l’app cible, ajoute tes mods et appuie sur Patcher.</string>
+    <string name="onboard_p2_title">Mods et parties</string>
+    <string name="onboard_p2_text">Ordonne tes mods : celui du haut gagne. Prévisualise leurs fichiers et vérifie les badges. Dans Parties, exporte et importe tes sauvegardes.</string>
+    <string name="onboard_p3_title">Points importants</string>
+    <string name="onboard_p3_text">Ne confirme les avertissements que si tu fais confiance à la source. Désinstalle le jeu avant d’installer le patch (la signature change). Autorise l’accès aux fichiers pour les parties.</string>
+    <string name="onboard_p4_title">Signaler un bug</string>
+    <string name="onboard_p4_text">Dis-nous : ce que tu faisais, quels mods et branche, version du jeu. Si l’app a planté, partage le crash_*.txt ou patch_*.log généré, ou copie le résumé avec le bouton.</string>
+    <string name="onboard_copy_debug">Copier le résumé</string>
+    <string name="onboard_copied">Copié !</string>
+    <string name="settings_tutorial">Voir le tutoriel</string>
 </resources>

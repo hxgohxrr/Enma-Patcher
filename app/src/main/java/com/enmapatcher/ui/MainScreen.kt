@@ -53,6 +53,14 @@ fun MainScreen(
     var updateDismissed by remember { mutableStateOf(false) }
 
     val modFlags by viewModel.modFlags.collectAsState()
+    val showOnboarding by viewModel.showOnboarding.collectAsState()
+    if (showOnboarding) {
+        val debugInfo = remember(showOnboarding) { viewModel.getDebugInfo() }
+        OnboardingDialog(
+            debugInfo = debugInfo,
+            onFinish = { viewModel.setOnboardingDone(true) },
+        )
+    }
     val needsModsWarning = settings.effectiveMods().any { mod ->
         mod.enabled && (modFlags[mod.id]?.hasPatches == true || modFlags[mod.id]?.hasSubMods == true)
     }
