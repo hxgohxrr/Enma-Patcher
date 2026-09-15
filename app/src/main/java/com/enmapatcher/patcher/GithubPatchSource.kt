@@ -428,6 +428,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             if (errors.isNotEmpty()) {
                 throw IOException("RawDownloadFailed:" + errors.take(5).joinToString(","))
             }
+            PatchBlob.spillDown(patches, PatchBlob.MAP_BUDGET_BYTES, spillDir)
             config to patches
         }
 
@@ -486,6 +487,7 @@ class GithubPatchSource(private val settings: AppSettings) {
                     }
                 }
                 if (hasLfsPointers(patches)) throw IOException("LfsPointer")
+                PatchBlob.spillDown(patches, PatchBlob.MAP_BUDGET_BYTES, spillDir)
                 return config to patches
             }
         }
@@ -522,6 +524,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             if (patches.isEmpty() && config.appName.isNullOrBlank() && config.version.isNullOrBlank()) {
                 throw IOException("EmptyModZip")
             }
+            PatchBlob.spillDown(patches, PatchBlob.MAP_BUDGET_BYTES, spillDir)
             return config to patches
         }
 

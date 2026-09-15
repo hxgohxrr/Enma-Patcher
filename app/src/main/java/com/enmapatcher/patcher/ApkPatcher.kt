@@ -514,6 +514,9 @@ class ApkPatcher(private val workDir: File) {
         }
 
         fun readData(entry: ZipEntryInfo): ByteArray {
+            if (entry.size > READ_CAP_BYTES || entry.compSize > READ_CAP_BYTES) {
+                throw IllegalStateException("EntryTooLarge:" + entry.name)
+            }
             raf.seek(entry.localOffset)
             val head = ByteArray(30)
             raf.readFully(head)
@@ -844,5 +847,6 @@ class ApkPatcher(private val workDir: File) {
 
     companion object {
         private const val BUFFER = 1_048_576
+        private const val READ_CAP_BYTES = 256L * 1024L * 1024L
     }
 }

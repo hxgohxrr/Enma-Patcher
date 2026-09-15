@@ -68,8 +68,10 @@ class SmaliDexPatcher {
             for (entry in apk.entries()) {
                 if (!entry.name.matches(Regex("classes\\d*\\.dex"))) continue
 
-                val origBytes = apk.getInputStream(entry).readBytes()
-                val origTmp = File(workDir, "_orig_${entry.name}").also { it.writeBytes(origBytes) }
+                val origTmp = File(workDir, "_orig_${entry.name}")
+                apk.getInputStream(entry).use { ins ->
+                    origTmp.outputStream().buffered(1048576).use { out -> ins.copyTo(out) }
+                }
                 val origDex = DexFileFactory.loadDexFile(origTmp, opcodes)
 
                 if (origDex.classes.none { it.type in patchedClasses }) continue

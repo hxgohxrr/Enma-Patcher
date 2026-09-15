@@ -24,7 +24,8 @@ sealed interface PatchBlob {
     }
 
     companion object {
-        const val SPILL_OVER_BYTES = 32L * 1024L * 1024L
+        const val SPILL_OVER_BYTES = 4L * 1024L * 1024L
+        const val MAP_BUDGET_BYTES = 256L * 1024L * 1024L
 
         fun ofBytes(data: ByteArray, spillDir: File?): PatchBlob {
             if (spillDir == null || data.size <= SPILL_OVER_BYTES) return Mem(data)
@@ -76,6 +77,30 @@ sealed interface PatchBlob {
             runCatching { fileOut?.close() }
             val done = file
             return if (done != null) Disk(done) else Mem(mem.toByteArray())
+        }
+
+        fun spillDown(map: MutableMap<String, PatchBlob>, budget: Long, spillDir: File?) {
+            if (spillDir == null) return
+            var total = 0L
+            for ((_, blob) in map) {
+                if (blob is Mem) total += blob.data.size
+            }
+            if (total <= budget) return
+            val big = map.entries
+                .filter { it.value is Mem }
+                .sortedByDescending { (it.value as Mem).data.size }
+            for ((key, blob) in big) {
+                if (total <= budget) break
+                blob as Mem
+                try {
+                    val file = File(spillDir, "blob_evict_${System.nanoTime()}")
+                    file.writeBytes(blob.data)
+                    map[key] = Disk(file)
+                    total -= blob.data.size
+                } catch (_: Exception) {
+                    break
+                }
+            }
         }
     }
 }

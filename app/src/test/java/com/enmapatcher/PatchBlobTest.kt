@@ -14,7 +14,7 @@ class PatchBlobTest {
             "hello".repeat(100).byteInputStream(),
             100L * 1024L * 1024L,
             "small.txt",
-            File(System.getProperty("java.io.tmpdir")),
+            File((System.getProperty("java.io.tmpdir") ?: ".")),
         )
         assertTrue(blob is PatchBlob.Mem)
         assertEquals("hello".repeat(100), blob.bytes().toString(Charsets.UTF_8))
@@ -22,7 +22,7 @@ class PatchBlobTest {
 
     @Test
     fun largeSpillsToDisk() {
-        val dir = File(System.getProperty("java.io.tmpdir"), "blobtest_${System.nanoTime()}")
+        val dir = File((System.getProperty("java.io.tmpdir") ?: "."), "blobtest_${System.nanoTime()}")
         dir.mkdirs()
         try {
             val chunk = ByteArray(65536) { (it % 251).toByte() }
@@ -49,8 +49,32 @@ class PatchBlobTest {
     }
 
     @Test
-    fun capThrowsAndCleans() {
-        val dir = File(System.getProperty("java.io.tmpdir"), "blobcap_${System.nanoTime()}")
+    fun spillDownKeepsContent() {
+        val dir = File((System.getProperty("java.io.tmpdir") ?: "."), "spilldown_${System.nanoTime()}")
+        dir.mkdirs()
+        try {
+            val map = LinkedHashMap<String, PatchBlob>()
+            repeat(4) { i ->
+                map["f$i.bin"] = PatchBlob.Mem(ByteArray(1024 * 1024) { (i * 7 + it % 251).toByte() })
+            }
+            PatchBlob.spillDown(map, 2L * 1024L * 1024L, dir)
+            var memTotal = 0L
+            for ((_, blob) in map) {
+                if (blob is PatchBlob.Mem) memTotal += blob.data.size
+            }
+            assertTrue(memTotal <= 2L * 1024L * 1024L)
+            for (i in 0 until 4) {
+                val bytes = map["f$i.bin"]!!.bytes()
+                assertEquals(1024 * 1024, bytes.size)
+                assertEquals((i * 7).toByte(), bytes[0])
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun capThrowsAndCleans() {        val dir = File((System.getProperty("java.io.tmpdir") ?: "."), "blobcap_${System.nanoTime()}")
         dir.mkdirs()
         try {
             val source = ByteArray(1024).inputStream()

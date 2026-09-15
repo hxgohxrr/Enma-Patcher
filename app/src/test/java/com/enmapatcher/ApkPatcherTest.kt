@@ -79,7 +79,7 @@ class ApkPatcherTest {
 
     @Test
     fun fastPathMatchesLegacy() {
-        val dir = File(System.getProperty("java.io.tmpdir"), "apkpatcher_test_${System.nanoTime()}")
+        val dir = File((System.getProperty("java.io.tmpdir") ?: "."), "apkpatcher_test_${System.nanoTime()}")
         dir.mkdirs()
         try {
             val apk = buildFixture(dir)
