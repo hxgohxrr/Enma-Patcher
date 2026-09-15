@@ -847,6 +847,6 @@ class ApkPatcher(private val workDir: File) {
 
     companion object {
         private const val BUFFER = 1_048_576
-        private const val READ_CAP_BYTES = 256L * 1024L * 1024L
+        private const val READ_CAP_BYTES = 32L * 1024L * 1024L
     }
 }
