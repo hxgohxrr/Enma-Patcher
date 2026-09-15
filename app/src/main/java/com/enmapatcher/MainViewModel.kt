@@ -299,9 +299,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             mod.branch.ifBlank { "main" },
                         )
                     } else if (mod.kind == ModKind.ZIP && mod.zipUri.isNotBlank()) {
-                        context.contentResolver.openInputStream(Uri.parse(mod.zipUri))?.use { stream ->
-                            GithubPatchSource.readLocalConfig(stream)
-                        }
+                        runCatching {
+                            GithubPatchSource.readLocalConfig(context.contentResolver, Uri.parse(mod.zipUri))
+                        }.getOrNull()
                     } else {
                         null
                     }

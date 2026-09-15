@@ -24,6 +24,8 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 private const val MAX_DRM_BYTES = 1L * 1024L * 1024L * 1024L
+private const val MAX_IPS_BYTES = 64L * 1024L * 1024L
+private const val MAX_SMALI_BYTES = 8L * 1024L * 1024L
 
 class EnmaPatcherEngine(private val context: Context) {
 
@@ -35,6 +37,7 @@ class EnmaPatcherEngine(private val context: Context) {
         onStep: (PatchStep) -> Unit,
     ): Result = coroutineScope {
         val cacheRoot = File(context.cacheDir, "enmapatcher_${System.currentTimeMillis()}")
+        try {
         cacheRoot.mkdirs()
         val blobDir = File(cacheRoot, "blobs").also { it.mkdirs() }
         async(Dispatchers.IO) {
@@ -109,15 +112,20 @@ class EnmaPatcherEngine(private val context: Context) {
             val title = context.getString(R.string.step_download_mod, queueIndex + 1, queue.size, modLabel)
             onStep(PatchStep(title, context.getString(R.string.step_download_mod_running), PatchStepStatus.RUNNING))
             try {
+                var lastEmit = 0L
                 val (cfg, files) = withContext(Dispatchers.IO) {
-                    downloadMod(mod, blobDir) { done, _, _ ->
-                        onStep(
-                            PatchStep(
-                                title,
-                                context.getString(R.string.step_download_mod_done, done),
-                                PatchStepStatus.RUNNING,
+                    downloadMod(mod, blobDir) { done, total, _ ->
+                        val now = System.currentTimeMillis()
+                        if (done >= total || now - lastEmit > 200) {
+                            lastEmit = now
+                            onStep(
+                                PatchStep(
+                                    title,
+                                    context.getString(R.string.step_download_mod_done, done),
+                                    PatchStepStatus.RUNNING,
+                                )
                             )
-                        )
+                        }
                     }
                 }
                 if (files.isEmpty() && cfg.appName.isNullOrBlank() &&
@@ -232,9 +240,14 @@ class EnmaPatcherEngine(private val context: Context) {
                     val owner = provider[target]
                     if (owner != null && owner < pi) continue
                     runCatching {
-                        val baseBytes = patchMap[target]?.bytes()
-                            ?: baseZip.getEntry(target)?.let { baseZip.getInputStream(it).readBytes() }
-                            ?: throw IllegalArgumentException("NoBase:$target")
+                        val baseBytes = patchMap[target]?.let {
+                            if (it.size() > MAX_IPS_BYTES) throw IllegalArgumentException("IpsTooLarge:$target")
+                            it.bytes()
+                        } ?: baseZip.getEntry(target)?.let { entry ->
+                            if (entry.size > MAX_IPS_BYTES) throw IllegalArgumentException("IpsTooLarge:$target")
+                            baseZip.getInputStream(entry).readBytes()
+                        } ?: throw IllegalArgumentException("NoBase:$target")
+                        if (ipsBlob.size() > MAX_IPS_BYTES) throw IllegalArgumentException("IpsTooLarge:$key")
                         val patched = IpsPatcher.apply(baseBytes, ipsBlob.bytes())
                         patchMap[target] = PatchBlob.ofBytes(patched, blobDir)
                         provider[target] = pi
@@ -282,7 +295,8 @@ class EnmaPatcherEngine(private val context: Context) {
                 )
             }
         }
-        val smaliPatches = patchMap.filter { it.key.startsWith("smali/") }
+        val smaliKeys = patchMap.keys.filter { it.startsWith("smali/") }
+        val smaliPatches = patchMap.filter { it.key.startsWith("smali/") && it.value.size() <= MAX_SMALI_BYTES }
             .mapValues { it.value.bytes() }
         if (smaliPatches.isNotEmpty()) {
             val smaliTitle = context.getString(R.string.step_compile_smali)
@@ -298,7 +312,7 @@ class EnmaPatcherEngine(private val context: Context) {
                 if (dexPatches.isEmpty()) {
                     throw IllegalStateException(context.getString(R.string.error_smali_failed, smaliPatches.size))
                 }
-                for (key in smaliPatches.keys) patchMap.remove(key)
+                for (key in smaliKeys) patchMap.remove(key)
                 for ((path, bytes) in dexPatches) patchMap[path] = PatchBlob.ofBytes(bytes, blobDir)
                 onStep(PatchStep(smaliTitle, context.getString(R.string.step_compile_smali_done, dexPatches.size), PatchStepStatus.DONE))
             } catch (e: Exception) {
@@ -356,6 +370,9 @@ class EnmaPatcherEngine(private val context: Context) {
         }
         cacheRoot.deleteRecursively()
         Result(signedApk, mergedConfig, backupApk)
+        } finally {
+            runCatching { cacheRoot.deleteRecursively() }
+        }
     }
 
     private fun isMetaFile(path: String): Boolean {

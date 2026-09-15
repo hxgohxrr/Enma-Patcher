@@ -506,7 +506,7 @@ class GithubPatchSource(private val settings: AppSettings) {
             var config = EnmaCfg()
             for ((name, blob) in rawEntries) {
                 val relative = if (stripPrefix != null) name.removePrefix(stripPrefix) else name
-                if (relative == "enmapatcher.cfg.json") {
+                if (relative == "enmapatcher.cfg.json" && blob.size() <= 1L * 1024L * 1024L) {
                     config = runCatching { EnmaCfg.fromJson(blob.bytes().toString(Charsets.UTF_8)) }
                         .getOrDefault(EnmaCfg())
                     break
@@ -525,40 +525,36 @@ class GithubPatchSource(private val settings: AppSettings) {
             return config to patches
         }
 
-        fun readLocalConfig(inputStream: InputStream): EnmaCfg? {
-            var found: EnmaCfg? = null
-            ZipInputStream(inputStream.buffered(BUFFER)).use { zis ->
-                val names = ArrayList<String>()
-                val blobs = HashMap<String, ByteArray>()
-                var entry = zis.nextEntry
-                while (entry != null && found == null) {
-                    if (!entry.isDirectory) {
-                        try {
-                            val bytes = readBounded(zis, 8L * 1024L * 1024L, entry.name)
-                            names += entry.name
-                            blobs[entry.name] = bytes
-                        } catch (_: Exception) {
-                        }
+        fun readLocalConfig(resolver: android.content.ContentResolver, uri: android.net.Uri): EnmaCfg? {
+            val names = resolver.openInputStream(uri)?.use { stream ->
+                val found = ArrayList<String>()
+                ZipInputStream(stream.buffered(BUFFER)).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory) found += entry.name
+                        zis.closeEntry()
+                        entry = zis.nextEntry
                     }
-                    zis.closeEntry()
-                    entry = zis.nextEntry
                 }
-                while (entry != null) {
-                    if (!entry.isDirectory) names += entry.name
-                    zis.closeEntry()
-                    entry = zis.nextEntry
-                }
-                val stripPrefix = commonTopPrefix(names)
-                for ((name, bytes) in blobs) {
-                    val relative = if (stripPrefix != null) name.removePrefix(stripPrefix) else name
-                    if (relative == "enmapatcher.cfg.json") {
-                        found = runCatching { EnmaCfg.fromJson(bytes.toString(Charsets.UTF_8)) }
-                            .getOrNull()
-                        break
+                found
+            } ?: return null
+            val stripPrefix = commonTopPrefix(names)
+            val cfgName = (stripPrefix ?: "") + "enmapatcher.cfg.json"
+            resolver.openInputStream(uri)?.use { stream ->
+                ZipInputStream(stream.buffered(BUFFER)).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory && entry.name == cfgName) {
+                            return runCatching {
+                                EnmaCfg.fromJson(readBounded(zis, 1L * 1024L * 1024L, entry.name).toString(Charsets.UTF_8))
+                            }.getOrNull()
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
                     }
                 }
             }
-            return found
+            return null
         }
 
         fun listLocalZipEntries(inputStream: InputStream, limit: Int = 500): List<String> {
