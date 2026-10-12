@@ -355,7 +355,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }.getOrDefault(emptyList())
                 flags[mod.id] = ModFlags(
                     origin = detectOrigin(names),
-                    hasPatches = names.any { it.startsWith("patches/") && it.lowercase().endsWith(".ips") },
+                    hasPatches = names.any { it.startsWith("patches/", ignoreCase = true) && it.lowercase().endsWith(".ips") },
                     hasSubMods = names.any { it == "mods/mods.json" },
                     ignored = names.any { isIgnoredFile(it) },
                 )

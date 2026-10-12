@@ -46,8 +46,8 @@ object IpsPatcher {
     }
 
     fun targetFor(ipsPath: String): String? {
-        val stripped = if (ipsPath.startsWith("patches/")) {
-            ipsPath.removePrefix("patches/")
+        val stripped = if (ipsPath.startsWith("patches/", ignoreCase = true)) {
+            ipsPath.substring("patches/".length)
         } else {
             ipsPath
         }

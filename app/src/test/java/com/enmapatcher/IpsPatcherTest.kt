@@ -4,6 +4,7 @@ import com.enmapatcher.patcher.IpsPatcher
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class IpsPatcherTest {
@@ -71,5 +72,27 @@ class IpsPatcherTest {
         assertEquals("assets/data/a.bin", IpsPatcher.targetFor("patches/assets/data/a.bin.IPS"))
         assertNull(IpsPatcher.targetFor("assets/data/a.bin"))
         assertNull(IpsPatcher.targetFor("patches/readme.txt"))
+    }
+
+    @Test
+    fun targetMappingCaseInsensitivePrefix() {
+        assertEquals("assets/data/a.bin", IpsPatcher.targetFor("Patches/assets/data/a.bin.ips"))
+        assertEquals("assets/data/a.bin", IpsPatcher.targetFor("PATCHES/assets/data/a.bin.IPS"))
+        assertTrue(IpsPatcher.isIpsEntry("Patches/assets/data/a.bin.IPS"))
+    }
+
+    @Test
+    fun multipleTargetsMapIndependently() {
+        val keys = listOf(
+            "patches/assets/data/a.bin.ips",
+            "patches/assets/data/b.bin.ips",
+            "patches/assets/split/extra.bin.ips",
+        )
+        val targets = keys.map { IpsPatcher.targetFor(it) }
+        assertEquals(
+            listOf("assets/data/a.bin", "assets/data/b.bin", "assets/split/extra.bin"),
+            targets,
+        )
+        for (key in keys) assertTrue(IpsPatcher.isIpsEntry(key))
     }
 }

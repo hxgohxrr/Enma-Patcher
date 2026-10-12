@@ -231,6 +231,8 @@ class EnmaPatcherEngine(private val context: Context) {
             }
         }
         ZipFile(targetApk!!).use { baseZip ->
+            val splitZips = splitApks.mapNotNull { runCatching { ZipFile(it) }.getOrNull() }
+            try {
             for ((pi, triple) in perModPatches.withIndex().reversed()) {
                 val cfg = triple.second
                 if (!cfg.effectiveAndroid()) continue
@@ -246,6 +248,13 @@ class EnmaPatcherEngine(private val context: Context) {
                         } ?: baseZip.getEntry(target)?.let { entry ->
                             if (entry.size > MAX_IPS_BYTES) throw IllegalArgumentException("IpsTooLarge:$target")
                             baseZip.getInputStream(entry).readBytes()
+                        } ?: splitZips.firstNotNullOfOrNull { zip ->
+                            runCatching {
+                                zip.getEntry(target)?.let { entry ->
+                                    if (entry.size > MAX_IPS_BYTES) throw IllegalArgumentException("IpsTooLarge:$target")
+                                    zip.getInputStream(entry).readBytes()
+                                }
+                            }.getOrNull()
                         } ?: throw IllegalArgumentException("NoBase:$target")
                         if (ipsBlob.size() > MAX_IPS_BYTES) throw IllegalArgumentException("IpsTooLarge:$key")
                         val patched = IpsPatcher.apply(baseBytes, ipsBlob.bytes())
@@ -253,6 +262,9 @@ class EnmaPatcherEngine(private val context: Context) {
                         provider[target] = pi
                     }
                 }
+            }
+            } finally {
+                splitZips.forEach { runCatching { it.close() } }
             }
         }
         var bypassFile: File? = null
@@ -377,7 +389,7 @@ class EnmaPatcherEngine(private val context: Context) {
 
     private fun isMetaFile(path: String): Boolean {
         if (path == "enmapatcher.cfg.json") return true
-        if (path.startsWith("patches/") || path.startsWith("mods/")) return true
+        if (path.startsWith("patches/", ignoreCase = true) || path.startsWith("mods/")) return true
         return isIgnoredFile(path)
     }
 
