@@ -53,6 +53,17 @@ fun SaveScreen(
             viewModel.previewSaveZip(it.toString())
         }
     }
+    val bridgePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.stageBridgeImport(it.toString())
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -354,6 +365,70 @@ fun SaveScreen(
                                 }
                             }
                         }
+                    }
+                    HorizontalDivider()
+                    Text(stringResource(R.string.saves_bridge_title), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        stringResource(R.string.saves_bridge_sub),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (state.bridgeFiles.isNotEmpty()) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                for (f in state.bridgeFiles.take(30)) {
+                                    Text(
+                                        text = f,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                if (state.bridgeFiles.size > 30) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.mod_files_more,
+                                            state.bridgeFiles.size - 30,
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.pullBridgeExport() },
+                        enabled = !state.busy && state.bridgeFiles.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.saves_bridge_pull))
+                    }
+                    if (state.bridgeZip != null) {
+                        OutlinedButton(
+                            onClick = { shareFile(context, state.bridgeZip!!) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.saves_share))
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { bridgePicker.launch(arrayOf("application/zip", "*/*")) },
+                        enabled = !state.busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.saves_bridge_stage))
+                    }
+                    if (state.bridgeStaged != null) {
+                        Text(
+                            text = stringResource(R.string.saves_bridge_staged, state.bridgeStaged!!),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 }
             }

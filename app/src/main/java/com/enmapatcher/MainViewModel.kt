@@ -61,6 +61,9 @@ data class SaveUiState(
     val exportedZip: File? = null,
     val preview: SaveManager.SaveZip? = null,
     val lastImport: SaveManager.ImportResult? = null,
+    val bridgeFiles: List<String> = emptyList(),
+    val bridgeZip: File? = null,
+    val bridgeStaged: Int? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -496,14 +499,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _saveState = MutableStateFlow(SaveUiState())
     val saveState: StateFlow<SaveUiState> = _saveState.asStateFlow()
 
-    fun refreshSaves(keepLastImport: Boolean = false) {
+    fun refreshSaves(keepLastImport: Boolean = false, keepBridgeResult: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             val retainedImport = if (keepLastImport) _saveState.value.lastImport else null
+            val retainedBridgeZip = if (keepBridgeResult) _saveState.value.bridgeZip else null
+            val retainedBridgeStaged = if (keepBridgeResult) _saveState.value.bridgeStaged else null
             _saveState.value = _saveState.value.copy(loading = true, error = null)
             try {
                 val manager = SaveManager(context)
                 val rooted = RootShell.available()
-                val dirs = manager.locate(_settings.value.effectivePackage())
+                val pkg = _settings.value.effectivePackage()
+                val dirs = manager.locate(pkg)
+                val bridgeFiles = manager.listBridgeFiles(pkg)
                 val prev = _saveState.value.selectedPath
                 val selected = dirs.firstOrNull { it.path == prev }?.path ?: dirs.firstOrNull()?.path
                 _saveState.value = SaveUiState(
@@ -512,6 +519,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     dirs = dirs,
                     selectedPath = selected,
                     lastImport = retainedImport,
+                    bridgeFiles = bridgeFiles,
+                    bridgeZip = retainedBridgeZip,
+                    bridgeStaged = retainedBridgeStaged,
                 )
             } catch (e: Exception) {
                 _saveState.value = _saveState.value.copy(loading = false, error = e.message)
@@ -583,6 +593,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             exportedZip = null,
             preview = null,
             lastImport = null,
+            bridgeZip = null,
+            bridgeStaged = null,
         )
+    }
+
+    fun pullBridgeExport() {
+        if (_saveState.value.busy) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _saveState.value = _saveState.value.copy(busy = true, error = null, bridgeZip = null)
+            try {
+                val zip = SaveManager(context).pullBridgeExport(_settings.value.effectivePackage())
+                _saveState.value = _saveState.value.copy(busy = false, bridgeZip = zip)
+                refreshSaves(keepBridgeResult = true)
+            } catch (e: Exception) {
+                _saveState.value = _saveState.value.copy(busy = false, error = e.message)
+            }
+        }
+    }
+
+    fun stageBridgeImport(uriString: String) {
+        if (_saveState.value.busy) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _saveState.value = _saveState.value.copy(busy = true, error = null, bridgeStaged = null)
+            try {
+                val names = SaveManager(context).stageBridgeImport(
+                    _settings.value.effectivePackage(),
+                    Uri.parse(uriString),
+                )
+                _saveState.value = _saveState.value.copy(busy = false, bridgeStaged = names.size)
+                refreshSaves(keepBridgeResult = true)
+            } catch (e: Exception) {
+                _saveState.value = _saveState.value.copy(busy = false, error = e.message)
+            }
+        }
     }
 }

@@ -154,6 +154,13 @@
     <string name="saves_import_empty">Das .zip enthält keine Spielstände (head.yw / gameN.yw)</string>
     <string name="saves_import_applied_title">Angewendet</string>
     <string name="saves_import_skipped_title">Übersprungen</string>
+    <string name="saves_bridge_title">In-Game-Brücke</string>
+    <string name="saves_bridge_sub">Mit dem Menü im Spiel synchronisieren: Exporte abholen oder Dateien zum Importieren bereitstellen.</string>
+    <string name="saves_bridge_pull">Export abholen</string>
+    <string name="saves_bridge_stage">Für Import bereitstellen</string>
+    <string name="saves_bridge_empty">Das Spiel hat noch nichts exportiert (Menü im Spiel → Export saves)</string>
+    <string name="saves_bridge_staged">%1$d Dateien für das Spiel bereit</string>
+    <string name="saves_bridge_unavailable">Kein Zugriff auf den Spielordner (Dateiberechtigung fehlt)</string>
     <string name="step_download_mod_skipped">Übersprungen: nicht für Android</string>
     <string name="ai_badge">AI Usage Present</string>
     <string name="mod_rec_version">Empf.: %1$s</string>

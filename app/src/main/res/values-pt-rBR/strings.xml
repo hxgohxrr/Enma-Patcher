@@ -154,6 +154,13 @@
     <string name="saves_import_empty">O .zip não contém saves (head.yw / gameN.yw)</string>
     <string name="saves_import_applied_title">Aplicados</string>
     <string name="saves_import_skipped_title">Ignorados</string>
+    <string name="saves_bridge_title">Ponte no jogo</string>
+    <string name="saves_bridge_sub">Sincronizar com o menu no jogo: recolher exports ou preparar arquivos para importar.</string>
+    <string name="saves_bridge_pull">Recolher export</string>
+    <string name="saves_bridge_stage">Preparar importação</string>
+    <string name="saves_bridge_empty">O jogo ainda não exportou nada (menu no jogo → Export saves)</string>
+    <string name="saves_bridge_staged">%1$d arquivos prontos para o jogo</string>
+    <string name="saves_bridge_unavailable">Sem acesso à pasta do jogo (falta permissão de arquivos)</string>
     <string name="step_download_mod_skipped">Ignorado: não é para Android</string>
     <string name="ai_badge">AI Usage Present</string>
     <string name="mod_rec_version">Rec.: %1$s</string>

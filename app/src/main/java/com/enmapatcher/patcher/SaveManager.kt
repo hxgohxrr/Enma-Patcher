@@ -139,43 +139,8 @@ class SaveManager(private val context: Context) {
 
     suspend fun importFromZip(saveDir: SaveDir, uri: Uri): ImportResult =
         withContext(Dispatchers.IO) {
-            val staging = File(context.cacheDir, "save_import_${System.currentTimeMillis()}")
-            staging.mkdirs()
+            val staging = stageZip(uri)
             try {
-                var stagedEntries = 0
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    ZipInputStream(stream.buffered()).use { zis ->
-                        var entry = zis.nextEntry
-                        while (entry != null) {
-                            if (!entry.isDirectory) {
-                                stagedEntries++
-                                if (stagedEntries > MAX_IMPORT_ENTRIES) {
-                                    throw IllegalArgumentException("ZipTooLarge")
-                                }
-                                val name = normalize(entry.name)
-                                if (name.isNotBlank() && !name.contains("..")) {
-                                    val out = File(staging, name)
-                                    out.parentFile?.mkdirs()
-                                    var written = 0L
-                                    out.outputStream().use { outStream ->
-                                        val buf = ByteArray(65536)
-                                        while (true) {
-                                            val n = zis.read(buf)
-                                            if (n < 0) break
-                                            written += n
-                                            if (written > MAX_IMPORT_FILE_BYTES) {
-                                                throw IllegalArgumentException("EntryTooLarge:$name")
-                                            }
-                                            outStream.write(buf, 0, n)
-                                        }
-                                    }
-                                }
-                            }
-                            zis.closeEntry()
-                            entry = zis.nextEntry
-                        }
-                    }
-                } ?: throw IllegalArgumentException("ZipOpenFailed")
                 val hasSave = SAVE_FILES.any { File(staging, it).let { f -> f.isFile && f.length() > 0 } }
                 if (!hasSave) throw IllegalArgumentException(context.getString(R.string.saves_import_empty))
                 val backup = backupSaveDir(saveDir)
@@ -199,6 +164,112 @@ class SaveManager(private val context: Context) {
                 staging.deleteRecursively()
             }
         }
+
+    suspend fun listBridgeFiles(packageName: String): List<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            bridgeDirForRead(packageName)?.list()?.toList()?.sorted() ?: emptyList()
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun pullBridgeExport(packageName: String): File = withContext(Dispatchers.IO) {
+        val dir = bridgeDirForRead(packageName)
+            ?: throw IllegalArgumentException(context.getString(R.string.saves_bridge_empty))
+        val files = dir.walkTopDown().filter { it.isFile }.toList()
+        if (files.isEmpty()) throw IllegalArgumentException(context.getString(R.string.saves_bridge_empty))
+        val destDir = context.getExternalFilesDir("saves") ?: File(context.filesDir, "saves")
+        destDir.mkdirs()
+        val dest = File(destDir, "enma_bridge_${System.currentTimeMillis()}.zip")
+        ZipOutputStream(dest.outputStream().buffered()).use { zos ->
+            files.sortedBy { it.name }.forEach { file ->
+                zos.putNextEntry(ZipEntry(file.relativeTo(dir).path.replace('\\', '/')))
+                file.inputStream().use { it.copyTo(zos) }
+                zos.closeEntry()
+            }
+        }
+        files.forEach { runCatching { it.delete() } }
+        dest
+    }
+
+    suspend fun stageBridgeImport(packageName: String, uri: Uri): List<String> =
+        withContext(Dispatchers.IO) {
+            val staging = stageZip(uri)
+            try {
+                val names = SAVE_FILES.filter { File(staging, it).let { f -> f.isFile && f.length() > 0 } }
+                if (names.isEmpty()) throw IllegalArgumentException(context.getString(R.string.saves_import_empty))
+                val dir = ensureBridgeDir(packageName)
+                dir.listFiles()?.forEach { runCatching { it.deleteRecursively() } }
+                for (name in names) {
+                    File(staging, name).inputStream().use { ins ->
+                        File(dir, name).outputStream().use { out -> ins.copyTo(out) }
+                    }
+                }
+                names.sorted()
+            } finally {
+                staging.deleteRecursively()
+            }
+        }
+
+    private fun bridgeCandidates(packageName: String): List<File> = listOf(
+        File(File("/storage/emulated/0/Android/data", packageName), "files/yw1_saves"),
+        File(File("/sdcard/Android/data", packageName), "files/yw1_saves"),
+    )
+
+    private fun bridgeDirForRead(packageName: String): File? {
+        return bridgeCandidates(packageName).firstOrNull { it.isDirectory && it.canRead() }
+    }
+
+    private fun ensureBridgeDir(packageName: String): File {
+        bridgeCandidates(packageName).firstOrNull { it.isDirectory && it.canWrite() }?.let { return it }
+        for (candidate in bridgeCandidates(packageName)) {
+            if ((candidate.exists() || candidate.mkdirs()) && candidate.canWrite()) return candidate
+        }
+        throw IllegalArgumentException(context.getString(R.string.saves_bridge_unavailable))
+    }
+
+    private fun stageZip(uri: Uri): File {
+        val staging = File(context.cacheDir, "save_stage_${System.nanoTime()}")
+        staging.mkdirs()
+        try {
+            var entries = 0
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                ZipInputStream(stream.buffered()).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory) {
+                            entries++
+                            if (entries > MAX_IMPORT_ENTRIES) {
+                                throw IllegalArgumentException("ZipTooLarge")
+                            }
+                            val name = normalize(entry.name)
+                            if (name.isNotBlank() && !name.contains("..")) {
+                                val out = File(staging, name)
+                                out.parentFile?.mkdirs()
+                                var written = 0L
+                                out.outputStream().use { outStream ->
+                                    val buf = ByteArray(65536)
+                                    while (true) {
+                                        val n = zis.read(buf)
+                                        if (n < 0) break
+                                        written += n
+                                        if (written > MAX_IMPORT_FILE_BYTES) {
+                                            throw IllegalArgumentException("EntryTooLarge:$name")
+                                        }
+                                        outStream.write(buf, 0, n)
+                                    }
+                                }
+                            }
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            } ?: throw IllegalArgumentException("ZipOpenFailed")
+            return staging
+        } catch (e: Exception) {
+            staging.deleteRecursively()
+            throw e
+        }
+    }
 
     private fun backupSaveDir(saveDir: SaveDir): File? {
         return try {
