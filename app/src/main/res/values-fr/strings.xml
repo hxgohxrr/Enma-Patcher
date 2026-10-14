@@ -151,6 +151,9 @@
     <string name="saves_import_done">%1$d fichiers appliqués</string>
     <string name="saves_excluded_main_note">main.bin est exclu à l’import et tes parties actuelles sont sauvegardées.</string>
     <string name="saves_backup_done">Sauvegarde : %1$s</string>
+    <string name="saves_import_empty">Le .zip ne contient aucune sauvegarde (head.yw / gameN.yw)</string>
+    <string name="saves_import_applied_title">Appliqués</string>
+    <string name="saves_import_skipped_title">Ignorés</string>
     <string name="step_download_mod_skipped">Ignoré : non destiné à Android</string>
     <string name="ai_badge">AI Usage Present</string>
     <string name="mod_rec_version">Rec. : %1$s</string>

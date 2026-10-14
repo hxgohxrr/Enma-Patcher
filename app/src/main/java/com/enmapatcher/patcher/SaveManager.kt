@@ -2,6 +2,7 @@ package com.enmapatcher.patcher
 
 import android.content.Context
 import android.net.Uri
+import com.enmapatcher.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -125,6 +126,7 @@ class SaveManager(private val context: Context) {
                 while (entry != null) {
                     if (!entry.isDirectory) {
                         total++
+                        if (total > MAX_IMPORT_ENTRIES) throw IllegalArgumentException("ZipTooLarge")
                         if (names.size < limit) names += normalize(entry.name)
                     }
                     zis.closeEntry()
@@ -140,16 +142,33 @@ class SaveManager(private val context: Context) {
             val staging = File(context.cacheDir, "save_import_${System.currentTimeMillis()}")
             staging.mkdirs()
             try {
+                var stagedEntries = 0
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     ZipInputStream(stream.buffered()).use { zis ->
                         var entry = zis.nextEntry
                         while (entry != null) {
                             if (!entry.isDirectory) {
+                                stagedEntries++
+                                if (stagedEntries > MAX_IMPORT_ENTRIES) {
+                                    throw IllegalArgumentException("ZipTooLarge")
+                                }
                                 val name = normalize(entry.name)
                                 if (name.isNotBlank() && !name.contains("..")) {
                                     val out = File(staging, name)
                                     out.parentFile?.mkdirs()
-                                    out.outputStream().use { zis.copyTo(it) }
+                                    var written = 0L
+                                    out.outputStream().use { outStream ->
+                                        val buf = ByteArray(65536)
+                                        while (true) {
+                                            val n = zis.read(buf)
+                                            if (n < 0) break
+                                            written += n
+                                            if (written > MAX_IMPORT_FILE_BYTES) {
+                                                throw IllegalArgumentException("EntryTooLarge:$name")
+                                            }
+                                            outStream.write(buf, 0, n)
+                                        }
+                                    }
                                 }
                             }
                             zis.closeEntry()
@@ -157,12 +176,14 @@ class SaveManager(private val context: Context) {
                         }
                     }
                 } ?: throw IllegalArgumentException("ZipOpenFailed")
+                val hasSave = SAVE_FILES.any { File(staging, it).let { f -> f.isFile && f.length() > 0 } }
+                if (!hasSave) throw IllegalArgumentException(context.getString(R.string.saves_import_empty))
                 val backup = backupSaveDir(saveDir)
                 val applied = mutableListOf<String>()
                 val skipped = mutableListOf<String>()
                 for (name in SAVE_FILES) {
                     val src = File(staging, name)
-                    if (!src.isFile) {
+                    if (!src.isFile || src.length() == 0L) {
                         skipped += name
                         continue
                     }
@@ -216,6 +237,12 @@ class SaveManager(private val context: Context) {
             try {
                 tmp.writeBytes(bytes)
                 RootShell.run("cp \"${tmp.absolutePath}\" \"${saveDir.path}/$name\"")
+                val ownership = runCatching {
+                    RootShell.run("stat -c %u:%g \"${saveDir.path}\"").trim()
+                }.getOrNull().orEmpty()
+                if (ownership.matches(Regex("\\d+:\\d+"))) {
+                    RootShell.run("chown $ownership \"${saveDir.path}/$name\"")
+                }
                 RootShell.run("chmod 660 \"${saveDir.path}/$name\"")
             } finally {
                 tmp.delete()
@@ -240,5 +267,7 @@ class SaveManager(private val context: Context) {
         val SAVE_FILES = listOf("head.yw", "game0.yw", "game1.yw", "game2.yw")
         val CONTAINER_FILES = listOf("main.bin", "stage.bin", "backup.bin", "temp.bin")
         const val EXCLUDED_IMPORT = "main.bin"
+        const val MAX_IMPORT_FILE_BYTES = 32L * 1024L * 1024L
+        const val MAX_IMPORT_ENTRIES = 10000
     }
 }

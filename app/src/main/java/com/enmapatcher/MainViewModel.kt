@@ -496,8 +496,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _saveState = MutableStateFlow(SaveUiState())
     val saveState: StateFlow<SaveUiState> = _saveState.asStateFlow()
 
-    fun refreshSaves() {
+    fun refreshSaves(keepLastImport: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
+            val retainedImport = if (keepLastImport) _saveState.value.lastImport else null
             _saveState.value = _saveState.value.copy(loading = true, error = null)
             try {
                 val manager = SaveManager(context)
@@ -510,6 +511,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     rooted = rooted,
                     dirs = dirs,
                     selectedPath = selected,
+                    lastImport = retainedImport,
                 )
             } catch (e: Exception) {
                 _saveState.value = _saveState.value.copy(loading = false, error = e.message)
@@ -563,8 +565,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _saveState.value = _saveState.value.copy(busy = true, error = null, lastImport = null)
             try {
                 val result = SaveManager(context).importFromZip(dir, Uri.parse(uriString))
-                _saveState.value = _saveState.value.copy(busy = false, lastImport = result)
-                refreshSaves()
+                _saveState.value = _saveState.value.copy(
+                    busy = false,
+                    preview = null,
+                    lastImport = result,
+                )
+                refreshSaves(keepLastImport = true)
             } catch (e: Exception) {
                 _saveState.value = _saveState.value.copy(busy = false, error = e.message)
             }

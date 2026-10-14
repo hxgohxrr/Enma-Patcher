@@ -266,6 +266,7 @@ fun SaveScreen(
                         }
                     }
                     if (state.lastImport != null) {
+                        val lastImport = state.lastImport!!
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(12.dp),
@@ -274,16 +275,78 @@ fun SaveScreen(
                                 Text(
                                     text = stringResource(
                                         R.string.saves_import_done,
-                                        state.lastImport!!.applied.size,
+                                        lastImport.applied.size,
                                     ),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                 )
-                                if (state.lastImport!!.backupZip != null) {
+                                if (lastImport.applied.isNotEmpty()) {
+                                    Text(
+                                        text = stringResource(R.string.saves_import_applied_title),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    for (name in lastImport.applied) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                            Text(
+                                                text = name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                }
+                                if (lastImport.skipped.isNotEmpty()) {
+                                    Text(
+                                        text = stringResource(R.string.saves_import_skipped_title),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    for (name in lastImport.skipped.take(30)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Warning,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                            Text(
+                                                text = name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                    if (lastImport.skipped.size > 30) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.mod_files_more,
+                                                lastImport.skipped.size - 30,
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                                if (lastImport.backupZip != null) {
                                     Text(
                                         text = stringResource(
                                             R.string.saves_backup_done,
-                                            state.lastImport!!.backupZip!!.name,
+                                            lastImport.backupZip!!.name,
                                         ),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,

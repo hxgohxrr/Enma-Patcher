@@ -151,6 +151,9 @@
     <string name="saves_import_done">%1$d Dateien angewendet</string>
     <string name="saves_excluded_main_note">main.bin ist beim Import ausgeschlossen und deine aktuellen Spielstände werden gesichert.</string>
     <string name="saves_backup_done">Backup: %1$s</string>
+    <string name="saves_import_empty">Das .zip enthält keine Spielstände (head.yw / gameN.yw)</string>
+    <string name="saves_import_applied_title">Angewendet</string>
+    <string name="saves_import_skipped_title">Übersprungen</string>
     <string name="step_download_mod_skipped">Übersprungen: nicht für Android</string>
     <string name="ai_badge">AI Usage Present</string>
     <string name="mod_rec_version">Empf.: %1$s</string>
